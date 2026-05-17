@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Mock for macOS `caffeinate`. Ignores -t/-d/-i/-s flags and just sleeps,
+# so tests can capture the PID and verify it's killed correctly.
+exec sleep 9999
