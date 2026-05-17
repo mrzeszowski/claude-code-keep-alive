@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shellcheck bin/
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: ./bin
+          severity: warning
+
+      - name: Validate plugin and marketplace manifests
+        run: |
+          jq -e . .claude-plugin/plugin.json
+          jq -e . .claude-plugin/marketplace.json
+
+      - name: Validate hooks manifest
+        run: jq -e . hooks/hooks.json
+
+      - name: Install yq
+        run: sudo snap install yq
+
+      - name: Validate command frontmatter
+        run: |
+          for f in commands/*.md; do
+            echo "--- $f"
+            awk '/^---$/{c++;next} c==1' "$f" | yq -e .
+          done
+
+  test:
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bats
+
+      - name: Install bats (macOS)
+        if: runner.os == 'macOS'
+        run: brew install bats-core
+      - name: Run bats suite
+        run: bats tests/
