@@ -20,6 +20,10 @@ read_state() {
 }
 
 detect_platform() {
+  if [ -n "${KEEP_ALIVE_PLATFORM:-}" ]; then
+    echo "$KEEP_ALIVE_PLATFORM"
+    return
+  fi
   case "$(uname -s)" in
     Darwin) echo darwin ;;
     Linux)  echo linux ;;
@@ -99,6 +103,27 @@ spawn_inhibitor() {
         sleep "$sleep_arg" </dev/null >/dev/null 2>&1 & ;;
   esac
   echo "$!"
+}
+
+ensure_inhibitor_binary() {
+  case "$(detect_platform)" in
+    darwin)
+      command -v caffeinate >/dev/null 2>&1 || {
+        echo "keep-alive: 'caffeinate' not found in PATH (ships with macOS; check your PATH)" >&2
+        exit 3
+      } ;;
+    linux)
+      command -v systemd-inhibit >/dev/null 2>&1 || {
+        echo "keep-alive: 'systemd-inhibit' not found in PATH (install systemd-container, e.g. 'sudo apt install systemd-container')" >&2
+        exit 3
+      } ;;
+    windows)
+      echo "keep-alive: Windows not yet supported in v0.1; contributions welcome at https://github.com/mrzeszowski/claude-code-keep-alive" >&2
+      exit 2 ;;
+    *)
+      echo "keep-alive: unsupported platform '$(uname -s)'" >&2
+      exit 2 ;;
+  esac
 }
 
 refresh_state() {
@@ -228,11 +253,12 @@ cmd_on() {
   else
     secs=0
   fi
+  ensure_inhibitor_binary
   with_lock _cmd_on "$secs"
 }
 
 cmd_off()        { with_lock _cmd_off; }
-cmd_busy()       { with_lock _cmd_busy; }
+cmd_busy()       { ensure_inhibitor_binary; with_lock _cmd_busy; }
 cmd_busy_event() { with_lock _cmd_busy_event "$@"; }
 
 usage() {

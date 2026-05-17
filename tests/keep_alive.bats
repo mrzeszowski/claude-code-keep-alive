@@ -193,3 +193,25 @@ EOF
   # should have lost the race and either not spawned or been killed.
   # Skip strict count check on systems without pgrep -P.
 }
+
+@test "unknown verb: usage to stderr, exit 1" {
+  run "$SCRIPT" foo
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q "Usage:"
+}
+
+@test "missing inhibitor binary: exit 3 with install hint" {
+  # Force platform=linux so the script looks for systemd-inhibit (not present
+  # on macOS). Strip the mocks dir from PATH so the mock systemd-inhibit is
+  # also gone.  This reliably tests exit-3 without gutting the system PATH.
+  CLEAN_PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "mocks" | tr '\n' ':' | sed 's/:$//')
+  KEEP_ALIVE_PLATFORM=linux PATH="$CLEAN_PATH" run "$SCRIPT" on
+  [ "$status" -eq 3 ]
+  echo "$output" | grep -qi "not found"
+}
+
+@test "help: -h prints usage to stderr, exit 0" {
+  run "$SCRIPT" -h
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "Usage:"
+}
