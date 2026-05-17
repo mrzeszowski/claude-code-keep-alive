@@ -1,0 +1,64 @@
+#!/usr/bin/env sh
+# keep-alive — prevent the machine from sleeping during Claude Code sessions
+set -u
+
+STATE_DIR="${KEEP_ALIVE_STATE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/claude-code-keep-alive}"
+STATE_FILE="$STATE_DIR/state"
+LOCK_FILE="$STATE_DIR/state.lock"
+
+mkdir -p "$STATE_DIR"
+
+read_state() {
+  mode=off
+  pid=
+  started_at=
+  expires_at=
+  if [ -f "$STATE_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "$STATE_FILE"
+  fi
+}
+
+cmd_status() {
+  read_state
+  case "$mode" in
+    off|"") echo "keep-alive: off" ;;
+    on)        echo "keep-alive: on (since $started_at, PID $pid)" ;;
+    duration)  echo "keep-alive: duration (expires $expires_at, PID $pid)" ;;
+    busy)
+      if [ -n "$pid" ]; then
+        echo "keep-alive: busy (active, PID $pid)"
+      else
+        echo "keep-alive: busy (no inhibitor currently active)"
+      fi ;;
+    *) echo "keep-alive: off" ;;
+  esac
+}
+
+usage() {
+  cat >&2 <<EOF
+Usage: keep-alive [status | on [DURATION] | off | busy | --busy-event=start | --busy-event=stop]
+
+  status              Show current state (default when no args).
+  on                  Inhibit sleep until 'off' is invoked.
+  on DURATION         Inhibit sleep for DURATION (e.g., 30m, 8h, 1d, 30).
+                      Bare number is treated as minutes.
+  off                 Release the inhibitor.
+  busy                Inhibit sleep only while Claude is actively processing.
+  --busy-event=...    Internal; invoked by Claude Code hooks.
+EOF
+}
+
+main() {
+  if [ $# -eq 0 ]; then
+    cmd_status
+    return 0
+  fi
+  case "$1" in
+    status) cmd_status ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage; exit 1 ;;
+  esac
+}
+
+main "$@"
