@@ -79,7 +79,7 @@ Single-repo-doubles-as-marketplace is the standard pattern for one-plugin distri
   "version": "0.1.0",
   "author": {
     "name": "Marcin Rzeszowski",
-    "email": "marcin.rzeszowski@diag.pl"
+    "email": "mrzeszowski@outlook.com"
   },
   "homepage": "https://github.com/<github-user>/claude-code-keep-alive",
   "repository": "https://github.com/<github-user>/claude-code-keep-alive",
@@ -98,7 +98,7 @@ Single-repo-doubles-as-marketplace is the standard pattern for one-plugin distri
   "description": "Single-plugin marketplace for the keep-alive plugin",
   "owner": {
     "name": "Marcin Rzeszowski",
-    "email": "marcin.rzeszowski@diag.pl"
+    "email": "mrzeszowski@outlook.com"
   },
   "plugins": [
     {
