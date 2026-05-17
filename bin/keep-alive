@@ -157,6 +157,16 @@ cmd_off() {
   cmd_status
 }
 
+cmd_busy() {
+  read_state
+  if [ -n "$pid" ] && is_alive "$pid"; then
+    kill "$pid" 2>/dev/null || true
+    for _ in 1 2 3 4 5; do is_alive "$pid" || break; sleep 0.1; done
+  fi
+  write_state busy "" "" ""
+  cmd_status
+}
+
 usage() {
   cat <<EOF
 Usage: keep-alive [status | on [DURATION] | off | busy | --busy-event=start | --busy-event=stop]
@@ -180,6 +190,7 @@ main() {
     status) cmd_status ;;
     on)     shift; cmd_on "$@" ;;
     off)    cmd_off ;;
+    busy)   cmd_busy ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 1 ;;
   esac

@@ -93,3 +93,26 @@ load test_helper
   run "$SCRIPT" on 0m
   [ "$status" -eq 1 ]
 }
+
+@test "busy: sets mode=busy, does not spawn an inhibitor" {
+  run "$SCRIPT" busy
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "keep-alive: busy (no inhibitor currently active)"
+  [ "$(state_get mode)" = "busy" ]
+  [ -z "$(state_get pid)" ]
+}
+
+@test "busy then off: clears busy mode" {
+  "$SCRIPT" busy
+  "$SCRIPT" off
+  [ "$(state_get mode)" = "off" ]
+}
+
+@test "on then busy: kills the on-inhibitor and switches mode" {
+  "$SCRIPT" on
+  pid=$(state_get pid)
+  "$SCRIPT" busy
+  [ "$(state_get mode)" = "busy" ]
+  [ -z "$(state_get pid)" ]
+  ! kill -0 "$pid" 2>/dev/null
+}
