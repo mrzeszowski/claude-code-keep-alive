@@ -59,3 +59,37 @@ load test_helper
   [ "$(state_get mode)" = "off" ]
   [ -z "$(state_get pid)" ]
 }
+
+@test "on 30m: mode=duration, expires_at set" {
+  run "$SCRIPT" on 30m
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -E '^keep-alive: duration \(expires [0-9TZ:-]+, PID [0-9]+\)$'
+  [ "$(state_get mode)" = "duration" ]
+  [ -n "$(state_get expires_at)" ]
+}
+
+@test "on 1h: parses hours" {
+  "$SCRIPT" on 1h
+  [ "$(state_get mode)" = "duration" ]
+}
+
+@test "on 1d: parses days" {
+  "$SCRIPT" on 1d
+  [ "$(state_get mode)" = "duration" ]
+}
+
+@test "on 30: bare number treated as minutes" {
+  "$SCRIPT" on 30
+  [ "$(state_get mode)" = "duration" ]
+}
+
+@test "on 5x: invalid duration exits 1 with usage hint" {
+  run "$SCRIPT" on 5x
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q "invalid duration"
+}
+
+@test "on 0m: invalid (zero is not a useful duration)" {
+  run "$SCRIPT" on 0m
+  [ "$status" -eq 1 ]
+}

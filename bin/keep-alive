@@ -45,6 +45,40 @@ expires_at="${4:-}"
 EOF
 }
 
+parse_duration() {
+  # Parse "30m" / "8h" / "1d" / "30" → seconds on stdout. Returns 1 on parse failure.
+  arg="$1"
+  [ -n "$arg" ] || return 1
+  case "$arg" in
+    *[!0-9mhd]*) return 1 ;;
+    *m) suffix=m; num=${arg%m} ;;
+    *h) suffix=h; num=${arg%h} ;;
+    *d) suffix=d; num=${arg%d} ;;
+    *)  suffix=m; num=$arg ;;
+  esac
+  case "$num" in
+    ""|*[!0-9]*) return 1 ;;
+  esac
+  [ "$num" -gt 0 ] || return 1
+  case "$suffix" in
+    m) echo $(( num * 60 )) ;;
+    h) echo $(( num * 3600 )) ;;
+    d) echo $(( num * 86400 )) ;;
+  esac
+}
+
+future_iso() {
+  # $1 = seconds from now; echoes ISO 8601 UTC timestamp.
+  secs="$1"
+  if date -u -r 0 +%s >/dev/null 2>&1; then
+    # BSD date (macOS)
+    date -u -r "$(( $(date -u +%s) + secs ))" +%Y-%m-%dT%H:%M:%SZ
+  else
+    # GNU date (Linux)
+    date -u -d "@$(( $(date -u +%s) + secs ))" +%Y-%m-%dT%H:%M:%SZ
+  fi
+}
+
 spawn_inhibitor() {
   # $1 = duration in seconds (0 or empty = forever). Echoes the PID.
   duration_secs="${1:-0}"
@@ -84,15 +118,28 @@ cmd_status() {
 }
 
 cmd_on() {
-  read_state
-  if [ "$mode" = on ] || [ "$mode" = duration ]; then
-    if is_alive "$pid"; then
-      cmd_status
-      return 0
+  duration_arg="${1:-}"
+  if [ -n "$duration_arg" ]; then
+    if ! secs=$(parse_duration "$duration_arg"); then
+      echo "keep-alive: invalid duration '$duration_arg' (use Nm, Nh, Nd, or bare N for minutes)" >&2
+      exit 1
     fi
+  else
+    secs=0
   fi
-  new_pid=$(spawn_inhibitor 0)
-  write_state on "$new_pid" "$(now_iso)" ""
+  read_state
+  if { [ "$mode" = on ] || [ "$mode" = duration ]; } && is_alive "$pid"; then
+    cmd_status
+    return 0
+  fi
+  new_pid=$(spawn_inhibitor "$secs")
+  started=$(now_iso)
+  if [ "$secs" -gt 0 ]; then
+    expires=$(future_iso "$secs")
+    write_state duration "$new_pid" "$started" "$expires"
+  else
+    write_state on "$new_pid" "$started" ""
+  fi
   cmd_status
 }
 
@@ -131,7 +178,7 @@ main() {
   fi
   case "$1" in
     status) cmd_status ;;
-    on)     cmd_on ;;
+    on)     shift; cmd_on "$@" ;;
     off)    cmd_off ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 1 ;;
