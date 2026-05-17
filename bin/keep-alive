@@ -19,6 +19,54 @@ read_state() {
   fi
 }
 
+detect_platform() {
+  case "$(uname -s)" in
+    Darwin) echo darwin ;;
+    Linux)  echo linux ;;
+    MINGW*|MSYS*|CYGWIN*) echo windows ;;
+    *) echo unsupported ;;
+  esac
+}
+
+is_alive() {
+  [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null
+}
+
+now_iso() {
+  date -u +%Y-%m-%dT%H:%M:%SZ
+}
+
+write_state() {
+  cat > "$STATE_FILE" <<EOF
+mode="$1"
+pid="${2:-}"
+started_at="${3:-}"
+expires_at="${4:-}"
+EOF
+}
+
+spawn_inhibitor() {
+  # $1 = duration in seconds (0 or empty = forever). Echoes the PID.
+  duration_secs="${1:-0}"
+  case "$(detect_platform)" in
+    darwin)
+      if [ "$duration_secs" -gt 0 ]; then
+        nohup caffeinate -t "$duration_secs" -dis </dev/null >/dev/null 2>&1 &
+      else
+        nohup caffeinate -dis </dev/null >/dev/null 2>&1 &
+      fi ;;
+    linux)
+      sleep_arg=infinity
+      [ "$duration_secs" -gt 0 ] && sleep_arg="$duration_secs"
+      nohup systemd-inhibit \
+        --what=idle:sleep \
+        --who=claude-code-keep-alive \
+        --why="Active Claude Code session" \
+        sleep "$sleep_arg" </dev/null >/dev/null 2>&1 & ;;
+  esac
+  echo $!
+}
+
 cmd_status() {
   read_state
   case "$mode" in
@@ -33,6 +81,19 @@ cmd_status() {
       fi ;;
     *) echo "keep-alive: off" ;;
   esac
+}
+
+cmd_on() {
+  read_state
+  if [ "$mode" = on ] || [ "$mode" = duration ]; then
+    if is_alive "$pid"; then
+      cmd_status
+      return 0
+    fi
+  fi
+  new_pid=$(spawn_inhibitor 0)
+  write_state on "$new_pid" "$(now_iso)" ""
+  cmd_status
 }
 
 usage() {
@@ -56,6 +117,7 @@ main() {
   fi
   case "$1" in
     status) cmd_status ;;
+    on)     cmd_on ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 1 ;;
   esac
