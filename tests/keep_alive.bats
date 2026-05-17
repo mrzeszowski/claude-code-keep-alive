@@ -210,6 +210,12 @@ EOF
   echo "$output" | grep -qi "not found"
 }
 
+@test "unsupported platform (windows): exit 2 with hint" {
+  KEEP_ALIVE_PLATFORM=windows run "$SCRIPT" on
+  [ "$status" -eq 2 ]
+  echo "$output" | grep -qi "not yet supported"
+}
+
 @test "help: -h prints usage to stderr, exit 0" {
   run "$SCRIPT" -h
   [ "$status" -eq 0 ]

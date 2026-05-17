@@ -106,7 +106,8 @@ spawn_inhibitor() {
 }
 
 ensure_inhibitor_binary() {
-  case "$(detect_platform)" in
+  _platform=$(detect_platform)
+  case "$_platform" in
     darwin)
       command -v caffeinate >/dev/null 2>&1 || {
         echo "keep-alive: 'caffeinate' not found in PATH (ships with macOS; check your PATH)" >&2
@@ -121,7 +122,7 @@ ensure_inhibitor_binary() {
       echo "keep-alive: Windows not yet supported in v0.1; contributions welcome at https://github.com/mrzeszowski/claude-code-keep-alive" >&2
       exit 2 ;;
     *)
-      echo "keep-alive: unsupported platform '$(uname -s)'" >&2
+      echo "keep-alive: unsupported platform '$_platform'" >&2
       exit 2 ;;
   esac
 }

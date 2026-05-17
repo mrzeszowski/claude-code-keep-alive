@@ -1096,10 +1096,19 @@ git push origin main
 }
 
 @test "missing inhibitor binary: exit 3 with install hint" {
-  # Empty PATH so neither caffeinate nor systemd-inhibit mocks resolve.
-  PATH="/no-such-dir" run "$SCRIPT" on
+  # Force platform=linux so the script looks for systemd-inhibit (not present
+  # on macOS). Strip the mocks dir from PATH so the mock systemd-inhibit is
+  # also gone.  This reliably tests exit-3 without gutting the system PATH.
+  CLEAN_PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "mocks" | tr '\n' ':' | sed 's/:$//')
+  KEEP_ALIVE_PLATFORM=linux PATH="$CLEAN_PATH" run "$SCRIPT" on
   [ "$status" -eq 3 ]
   echo "$output" | grep -qi "not found"
+}
+
+@test "unsupported platform (windows): exit 2 with hint" {
+  KEEP_ALIVE_PLATFORM=windows run "$SCRIPT" on
+  [ "$status" -eq 2 ]
+  echo "$output" | grep -qi "not yet supported"
 }
 
 @test "help: -h prints usage to stderr, exit 0" {
@@ -1120,7 +1129,8 @@ Add helper:
 
 ```sh
 ensure_inhibitor_binary() {
-  case "$(detect_platform)" in
+  _platform=$(detect_platform)
+  case "$_platform" in
     darwin)
       command -v caffeinate >/dev/null 2>&1 || {
         echo "keep-alive: 'caffeinate' not found in PATH (ships with macOS; check your PATH)" >&2
@@ -1135,11 +1145,13 @@ ensure_inhibitor_binary() {
       echo "keep-alive: Windows not yet supported in v0.1; contributions welcome at https://github.com/mrzeszowski/claude-code-keep-alive" >&2
       exit 2 ;;
     *)
-      echo "keep-alive: unsupported platform '$(uname -s)'" >&2
+      echo "keep-alive: unsupported platform '$_platform'" >&2
       exit 2 ;;
   esac
 }
 ```
+
+**Note:** `detect_platform` honors a `KEEP_ALIVE_PLATFORM` environment variable as a test-only override (mirrors the `KEEP_ALIVE_STATE_DIR` pattern). When set and non-empty, its value is returned instead of the `uname -s` mapping. This is what makes test 26 portable on macOS — we force `linux` so `command -v systemd-inhibit` is the deciding check, regardless of whether `/usr/bin/caffeinate` is present.
 
 Call `ensure_inhibitor_binary` at the top of `cmd_on` (before locking) and at the top of `cmd_busy` (so `busy` also fails fast on unsupported platforms, even though it doesn't spawn immediately). Do NOT call it from `cmd_busy_event` — hooks fire on every prompt and must stay silent on unsupported platforms.
 
