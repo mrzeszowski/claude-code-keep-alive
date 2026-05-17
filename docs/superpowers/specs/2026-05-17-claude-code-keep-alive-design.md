@@ -64,8 +64,18 @@ claude-code-keep-alive/                   public GitHub repo, also IS the plugin
 │   ├── test_keep_alive.bats              bats integration tests
 │   └── mocks/
 │       └── caffeinate                    fake inhibitor that just sleeps
-├── .github/workflows/ci.yml              run bats on macOS + Ubuntu
-├── README.md                             install + usage + namespace explanation
+├── .github/
+│   ├── workflows/
+│   │   ├── ci.yml                        shellcheck + manifest validation + bats matrix
+│   │   └── release.yml                   tag-driven GitHub release
+│   ├── dependabot.yml                    weekly GitHub-Actions version updates
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   └── ISSUE_TEMPLATE/
+│       ├── bug_report.md
+│       └── feature_request.md
+├── README.md                             install (marketplace) + usage + namespace explanation
+├── CONTRIBUTING.md                       local-dev install, running tests
+├── CHANGELOG.md                          Keep-a-Changelog
 └── LICENSE                               MIT
 ```
 
@@ -84,13 +94,13 @@ Single-repo-doubles-as-marketplace is the standard pattern for one-plugin distri
     "name": "Marcin Rzeszowski",
     "email": "mrzeszowski@outlook.com"
   },
-  "homepage": "https://github.com/<github-user>/claude-code-keep-alive",
-  "repository": "https://github.com/<github-user>/claude-code-keep-alive",
+  "homepage": "https://github.com/mrzeszowski/claude-code-keep-alive",
+  "repository": "https://github.com/mrzeszowski/claude-code-keep-alive",
   "license": "MIT"
 }
 ```
 
-`<github-user>` is filled in when the repo is published. The implementation plan will treat this as a configuration step, not a code change.
+The repo is hosted at `https://github.com/mrzeszowski/claude-code-keep-alive` (public).
 
 ### 6.2 `.claude-plugin/marketplace.json`
 
@@ -111,7 +121,7 @@ Single-repo-doubles-as-marketplace is the standard pattern for one-plugin distri
       "version": "0.1.0",
       "source": "./",
       "author": { "name": "Marcin Rzeszowski" },
-      "homepage": "https://github.com/<github-user>/claude-code-keep-alive",
+      "homepage": "https://github.com/mrzeszowski/claude-code-keep-alive",
       "tags": ["productivity", "sleep", "caffeinate", "system"]
     }
   ]
@@ -265,20 +275,41 @@ The hook fires in every Claude Code session whenever the plugin is installed and
 3. Script spawns `timeout 1800 caffeinate -dis` detached, saves PID, sets mode=duration, expires_at=now+30m.
 4. After 30 minutes, `timeout` kills `caffeinate`. Next `status` call notices the PID is gone, clears state, reports `off`.
 
-## 8. Installation Flow
+## 8. Installation
+
+### 8.1 Recommended (marketplace install) — the most popular path
+
+Claude Code's native plugin manager is the standard distribution channel. Since this repository contains both `.claude-plugin/marketplace.json` and `.claude-plugin/plugin.json`, users can install with two short commands inside any Claude Code session:
 
 ```text
-1. Open Claude Code
-2. /plugin marketplace add <github-user>/claude-code-keep-alive
-3. /plugin install keep-alive@claude-code-keep-alive
-4. /reload-plugins   (or restart)
-5. /keep-alive:on
+/plugin marketplace add mrzeszowski/claude-code-keep-alive
+/plugin install keep-alive@claude-code-keep-alive
 ```
 
-For development:
+Behind the scenes Claude Code clones the repo into its plugin cache, reads the marketplace manifest, fetches the plugin source from `./`, and namespaces the four slash commands under `/keep-alive:`. Users get versioned updates whenever the `version` field is bumped — they pull with `/plugin update keep-alive@claude-code-keep-alive`.
+
+`mrzeszowski/claude-code-keep-alive` is GitHub shorthand that `/plugin marketplace add` resolves to `https://github.com/mrzeszowski/claude-code-keep-alive`. The README prominently shows these two commands as the first thing users see.
+
+### 8.2 Local development install
+
+For hacking on the plugin itself:
+
 ```text
-claude --plugin-dir /path/to/claude-code-keep-alive
+git clone git@github.com:mrzeszowski/claude-code-keep-alive.git
+cd claude-code-keep-alive
+claude --plugin-dir .
+# then inside the session, after any change:
 /reload-plugins
+```
+
+When a `--plugin-dir` plugin has the same name as an installed marketplace plugin, the local copy wins for that session, so you can iterate without uninstalling first.
+
+### 8.3 First-run verification
+
+```text
+/keep-alive:status        # expect: keep-alive: off
+/keep-alive:on            # expect: keep-alive: on (since ..., PID ...)
+/keep-alive:off           # expect: keep-alive: off
 ```
 
 ## 9. Error Handling
@@ -316,7 +347,7 @@ claude --plugin-dir /path/to/claude-code-keep-alive
   - Unknown verb (`keep-alive foo`) exits 1 with usage
   - Missing inhibitor binary exits 3 with install hint
 
-**CI:** GitHub Actions matrix on `macos-latest` (real `caffeinate` available) and `ubuntu-latest` (mock inhibitor, since CI runners lack `systemd-inhibit` for an interactive session). Each runner installs `bats-core` and runs the suite.
+**CI:** See §11 for the full GitHub Actions setup. In summary: shellcheck + JSON manifest validation on every push/PR, bats matrix on macOS + Ubuntu, tag-driven release workflow, weekly Dependabot for action versions.
 
 **Manual smoke test (documented in README):**
 1. Load with `--plugin-dir`.
@@ -324,28 +355,157 @@ claude --plugin-dir /path/to/claude-code-keep-alive
 3. `/keep-alive:off`; confirm assertion is released.
 4. `/keep-alive:busy`; submit a prompt; assert inhibit appears during work and disappears after `Stop`.
 
-## 11. Security and Privacy
+## 11. GitHub Actions Workflows
+
+Workflows live under `.github/workflows/`. Three files, plus Dependabot config and standard repository chrome. The goal is to catch obvious breakage (shellcheck issues, broken JSON, failing tests) on every PR while staying lightweight enough that CI doesn't slow contribution to a shell-script plugin.
+
+### 11.1 `.github/workflows/ci.yml` — lint + test on every push/PR
+
+```yaml
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shellcheck bin/keep-alive
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: ./bin
+          severity: warning
+      - name: Validate plugin manifests are valid JSON
+        run: |
+          jq -e . .claude-plugin/plugin.json
+          jq -e . .claude-plugin/marketplace.json
+      - name: Validate hooks manifest
+        run: jq -e . hooks/hooks.json
+      - name: Validate command frontmatter parses as YAML
+        run: |
+          sudo apt-get update && sudo apt-get install -y yq
+          for f in commands/*.md; do
+            awk '/^---$/{c++;next} c==1' "$f" | yq -e .
+          done
+  test:
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bats
+        uses: bats-core/bats-action@2.0.0
+      - name: Run bats tests
+        run: bats tests/
+```
+
+Rationale:
+- **shellcheck** is the de facto linter for POSIX shell; running it at `warning` severity catches the bugs that actually bite without rejecting stylistic preferences.
+- **Manifest validation** is the cheapest possible regression net for plugin.json/marketplace.json/hooks.json — a typo there breaks installs silently.
+- **bats matrix** on ubuntu + macOS covers the two supported platforms. macOS runner uses real `caffeinate`; ubuntu uses the mock (no `systemd-inhibit` in non-interactive CI).
+- **Concurrency** cancels superseded runs on rapid pushes, saving CI minutes.
+- **Permissions** start at `read`-only and are widened per-job only when needed.
+
+### 11.2 `.github/workflows/release.yml` — tag-driven GitHub releases
+
+```yaml
+name: Release
+on:
+  push:
+    tags: ['v*.*.*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify plugin.json version matches tag
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          MANIFEST=$(jq -r .version .claude-plugin/plugin.json)
+          if [ "$TAG" != "$MANIFEST" ]; then
+            echo "Tag $TAG does not match plugin.json version $MANIFEST" >&2
+            exit 1
+          fi
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+```
+
+Rationale:
+- Plugin updates are gated by the `version` field in `plugin.json`, not by tags. The release workflow exists for *visibility* (release notes, changelog, GitHub's "Releases" tab) and to enforce that the tag and manifest version stay in sync — a common foot-gun for plugin authors.
+- Pre-release detection (any tag containing `-`, e.g. `v0.1.0-rc.1`) is automatic.
+
+### 11.3 `.github/dependabot.yml` — weekly action updates
+
+```yaml
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+```
+
+Keeps `actions/checkout`, `softprops/action-gh-release`, etc. current without manual chasing.
+
+### 11.4 Repository chrome
+
+| File | Purpose |
+| ---- | ------- |
+| `.github/PULL_REQUEST_TEMPLATE.md` | Checklist: tests pass, version bumped, README updated, manual smoke test done. |
+| `.github/ISSUE_TEMPLATE/bug_report.md` | OS, Claude Code version, output of `/keep-alive:status`, reproduction steps. |
+| `.github/ISSUE_TEMPLATE/feature_request.md` | Lightweight, optional. |
+| `CONTRIBUTING.md` | How to run tests locally, how to test the plugin with `--plugin-dir`. |
+| `CHANGELOG.md` | Keep-a-Changelog format, populated per release. |
+| `LICENSE` | MIT. |
+
+### 11.5 Branch protection (configured in GitHub UI, documented in CONTRIBUTING.md)
+
+- Require `lint` and `test` checks to pass before merging to `main`.
+- Require linear history (rebase or squash; no merge commits).
+- Require pull request reviews for changes to `main`.
+
+## 12. Security and Privacy
 
 - No network calls. No telemetry.
 - Hooks execute on every prompt; the hook command is small, well-defined, and shipped within the plugin (no user-controlled string interpolation). State path is namespaced under the user's `$XDG_CACHE_HOME`.
 - The shipped `bin/keep-alive` does only what the design specifies. Code review surface is small (~150 lines of POSIX sh).
+- Workflows pin third-party actions to versioned tags (e.g., `@v4`, `@v2`) and use the minimum `permissions:` scope each job needs.
 
-## 12. Versioning and Release
+## 13. Versioning and Release
 
 - `version` field set explicitly in both `plugin.json` and `marketplace.json` (`0.1.0` initially). Users only receive updates when the version is bumped, not on every commit.
 - Semantic versioning. Public release tags follow `v0.1.0`, `v0.2.0`, etc.
 - Pre-release: tag `v0.1.0-rc.1` and dogfood by installing from the repo before tagging `v0.1.0`.
+- `release.yml` (§11.2) enforces tag-to-manifest version parity.
 
-## 13. Out-of-Scope for v0.1 (Tracked for Later)
+## 14. Out-of-Scope for v0.1 (Tracked for Later)
 
 - Windows support (`SetThreadExecutionState` via PowerShell or `powercfg /requests` watchdog).
 - Per-session inhibitor (would require passing `CLAUDE_SESSION_ID` from hooks and tracking N PIDs).
 - Configurable inhibitor flags (e.g., let user choose `caffeinate -i` vs `-dis`).
 - Notification when duration expires.
 - A `/keep-alive:list` to enumerate active inhibitors across plugin versions.
+- Submission to the official Anthropic plugin marketplace (post-v0.1, once the plugin has dogfood mileage).
 
-## 14. Open Items Before Implementation
+## 15. Open Items Before Implementation
 
-1. **GitHub username/org**: Plugin manifest and README contain `<github-user>` placeholders. Final repo URL determines these. Implementation plan should treat this as a one-line fill-in, not a code change.
-2. **Hook event names**: This design assumes `UserPromptSubmit` and `Stop` are the right names. Implementation plan will verify against current Claude Code hook documentation; if they have changed, equivalent "session became busy" / "session became idle" events will be substituted.
-3. **`allowed-tools` syntax in command frontmatter**: Design assumes JSON-array `["Bash"]`. Implementation plan will confirm exact frontmatter shape (some docs show whitespace-separated string). Choice does not affect overall design.
+1. **Hook event names**: This design assumes `UserPromptSubmit` and `Stop` are the right names. Implementation plan will verify against current Claude Code hook documentation; if they have changed, equivalent "session became busy" / "session became idle" events will be substituted.
+2. **`allowed-tools` syntax in command frontmatter**: Design assumes JSON-array `["Bash"]`. Implementation plan will confirm exact frontmatter shape (some docs show whitespace-separated string). Choice does not affect overall design.
