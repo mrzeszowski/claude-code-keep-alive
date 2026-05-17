@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "keep-alive --busy-event=start >/dev/null 2>&1 &" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "keep-alive --busy-event=stop >/dev/null 2>&1 &" }
+        ]
+      }
+    ]
+  }
+}
