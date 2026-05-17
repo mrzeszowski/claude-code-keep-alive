@@ -151,3 +151,32 @@ load test_helper
   "$SCRIPT" --busy-event=start
   [ "$(state_get pid)" = "$first_pid" ]
 }
+
+@test "stale PID in on-mode is cleaned: status normalizes to off" {
+  mkdir -p "$KEEP_ALIVE_STATE_DIR"
+  cat > "$KEEP_ALIVE_STATE_DIR/state" <<EOF
+mode="on"
+pid="999999"
+started_at="2026-05-17T00:00:00Z"
+expires_at=""
+EOF
+  run "$SCRIPT" status
+  [ "$status" -eq 0 ]
+  [ "$output" = "keep-alive: off" ]
+  [ "$(state_get mode)" = "off" ]
+}
+
+@test "stale PID in busy-mode is cleaned: mode stays busy, pid cleared" {
+  mkdir -p "$KEEP_ALIVE_STATE_DIR"
+  cat > "$KEEP_ALIVE_STATE_DIR/state" <<EOF
+mode="busy"
+pid="999999"
+started_at="2026-05-17T00:00:00Z"
+expires_at=""
+EOF
+  run "$SCRIPT" status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "keep-alive: busy (no inhibitor currently active)"
+  [ "$(state_get mode)" = "busy" ]
+  [ -z "$(state_get pid)" ]
+}
