@@ -37,3 +37,25 @@ load test_helper
   [ "$first_pid" = "$second_pid" ]
   kill -0 "$second_pid"
 }
+
+@test "off after on: kills PID and reports off" {
+  "$SCRIPT" on
+  pid=$(state_get pid)
+  run "$SCRIPT" off
+  [ "$status" -eq 0 ]
+  [ "$output" = "keep-alive: off" ]
+  ! kill -0 "$pid" 2>/dev/null
+}
+
+@test "off on empty state is a no-op success" {
+  run "$SCRIPT" off
+  [ "$status" -eq 0 ]
+  [ "$output" = "keep-alive: off" ]
+}
+
+@test "off clears mode and pid in state file" {
+  "$SCRIPT" on
+  "$SCRIPT" off
+  [ "$(state_get mode)" = "off" ]
+  [ -z "$(state_get pid)" ]
+}

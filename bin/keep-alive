@@ -96,6 +96,20 @@ cmd_on() {
   cmd_status
 }
 
+cmd_off() {
+  read_state
+  if [ -n "$pid" ] && is_alive "$pid"; then
+    kill "$pid" 2>/dev/null || true
+    # Give the process a moment to die so subsequent tests see kill -0 fail.
+    for _ in 1 2 3 4 5; do
+      is_alive "$pid" || break
+      sleep 0.1
+    done
+  fi
+  write_state off "" "" ""
+  cmd_status
+}
+
 usage() {
   cat <<EOF
 Usage: keep-alive [status | on [DURATION] | off | busy | --busy-event=start | --busy-event=stop]
@@ -118,6 +132,7 @@ main() {
   case "$1" in
     status) cmd_status ;;
     on)     cmd_on ;;
+    off)    cmd_off ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 1 ;;
   esac
