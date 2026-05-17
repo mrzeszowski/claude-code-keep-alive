@@ -107,8 +107,8 @@ The repo is hosted at `https://github.com/mrzeszowski/claude-code-keep-alive` (p
 ```json
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "mrzeszowski",
-  "description": "Marcin Rzeszowski's Claude Code plugins",
+  "name": "claude-code-keep-alive",
+  "description": "Single-plugin marketplace for the keep-alive plugin",
   "owner": {
     "name": "Marcin Rzeszowski",
     "email": "mrzeszowski@outlook.com"
@@ -128,12 +128,7 @@ The repo is hosted at `https://github.com/mrzeszowski/claude-code-keep-alive` (p
 }
 ```
 
-The marketplace `name` is the label users type in `/plugin install <plugin>@<marketplace>`. Using `mrzeszowski` (rather than the repo name `claude-code-keep-alive`) keeps that line short and English-readable ("install keep-alive from mrzeszowski") and scales naturally if more plugins are added to the same repo later. It mirrors the npm-scope and GitHub-org conventions users already know.
-
-```text
-before:  /plugin install keep-alive@claude-code-keep-alive
-after:   /plugin install keep-alive@mrzeszowski
-```
+Marketplace `name` matches the repo name. Install reads as `/plugin install {plugin-name}@{marketplace-name}` — once users see the pattern, the repetition is informative rather than awkward.
 
 ### 6.3 Slash command files
 
@@ -290,12 +285,12 @@ Claude Code's native plugin manager is the standard distribution channel. Since 
 
 ```text
 /plugin marketplace add mrzeszowski/claude-code-keep-alive
-/plugin install keep-alive@mrzeszowski
+/plugin install keep-alive@claude-code-keep-alive
 ```
 
-Behind the scenes Claude Code clones the repo into its plugin cache, reads the marketplace manifest, fetches the plugin source from `./`, and namespaces the four slash commands under `/keep-alive:`. Users get versioned updates whenever the `version` field is bumped — they pull with `/plugin update keep-alive@mrzeszowski`.
+Behind the scenes Claude Code clones the repo into its plugin cache, reads the marketplace manifest, fetches the plugin source from `./`, and namespaces the four slash commands under `/keep-alive:`. Users get versioned updates whenever the `version` field is bumped — they pull with `/plugin update keep-alive@claude-code-keep-alive`.
 
-`mrzeszowski/claude-code-keep-alive` in the first line is the GitHub shorthand that `/plugin marketplace add` resolves to `https://github.com/mrzeszowski/claude-code-keep-alive`. The `@mrzeszowski` in the second line is the marketplace's *name* (declared in `marketplace.json`), which is intentionally short so install/update commands read naturally. The README prominently shows these two commands as the first thing users see.
+The general form is `/plugin install {plugin-name}@{marketplace-name}`. Here both happen to share the `keep-alive` substring because the marketplace is a single-plugin one named after the repo, but they're independent labels: the plugin name (`keep-alive`) becomes the slash-command namespace (`/keep-alive:*`), while the marketplace name (`claude-code-keep-alive`) is just the label users type after `@`. The first line is GitHub shorthand that resolves to `https://github.com/mrzeszowski/claude-code-keep-alive`. The README prominently shows these two commands as the first thing users see.
 
 ### 8.2 Local development install
 
