@@ -13,7 +13,7 @@ setup() {
 teardown() {
   if [ -f "$KEEP_ALIVE_STATE_DIR/state" ]; then
     pid=$(grep '^pid=' "$KEEP_ALIVE_STATE_DIR/state" 2>/dev/null \
-            | sed 's/^pid="\?//;s/"\?$//')
+            | sed -E 's/^pid="?//;s/"?$//')
     if [ -n "$pid" ]; then
       kill -9 "$pid" 2>/dev/null || true
     fi

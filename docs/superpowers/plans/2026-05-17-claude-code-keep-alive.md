@@ -121,7 +121,7 @@ setup() {
 teardown() {
   if [ -f "$KEEP_ALIVE_STATE_DIR/state" ]; then
     pid=$(grep '^pid=' "$KEEP_ALIVE_STATE_DIR/state" 2>/dev/null \
-            | sed 's/^pid="\?//;s/"\?$//')
+            | sed -E 's/^pid="?//;s/"?$//')
     if [ -n "$pid" ]; then
       kill -9 "$pid" 2>/dev/null || true
     fi
@@ -159,7 +159,7 @@ Make it executable: `chmod +x tests/mocks/caffeinate`.
 while [ $# -gt 0 ]; do
   case "$1" in
     --what=*|--who=*|--why=*) shift ;;
-    --what|--who|--why) shift 2 ;;
+    --what|--who|--why) shift; [ $# -gt 0 ] && shift ;;
     --mode=*|--mode) shift; [ "${1:-}" ] && shift ;;
     --no-pager|--no-ask-password) shift ;;
     --) shift; break ;;

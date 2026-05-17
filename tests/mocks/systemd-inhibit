@@ -7,7 +7,7 @@
 while [ $# -gt 0 ]; do
   case "$1" in
     --what=*|--who=*|--why=*) shift ;;
-    --what|--who|--why) shift 2 ;;
+    --what|--who|--why) shift; [ $# -gt 0 ] && shift ;;
     --mode=*|--mode) shift; [ "${1:-}" ] && shift ;;
     --no-pager|--no-ask-password) shift ;;
     --) shift; break ;;
