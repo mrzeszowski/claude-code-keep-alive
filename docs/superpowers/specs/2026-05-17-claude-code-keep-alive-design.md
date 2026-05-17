@@ -19,26 +19,26 @@ The motivation in Copilot CLI is to keep a session alive while the user steers i
 
 ## 3. Command Surface
 
-Closest achievable parity with Copilot CLI's `/keep-alive`. Claude Code plugin commands are namespaced as `/<plugin>:<command>`, so:
+Claude Code plugin commands are namespaced as `/<plugin>:<command>`. Rather than a single dispatcher (which would force the awkward `/keep-alive:keep-alive ...`), the plugin ships one shortcut command per action. Duration folds naturally into `on` so the command reads as English: "turn it on for 30 minutes."
 
-| User input                                | Behavior |
-| ----------------------------------------- | -------- |
-| `/keep-alive:keep-alive`                  | Print current status (mode, time remaining if applicable, inhibitor PID). |
-| `/keep-alive:keep-alive on`               | Inhibit sleep until `off` is invoked. |
-| `/keep-alive:keep-alive off`              | Release the inhibitor. |
-| `/keep-alive:keep-alive busy`             | Inhibit only while Claude is actively processing (started/stopped by hooks on `UserPromptSubmit`/`Stop`). |
-| `/keep-alive:keep-alive <N>m`             | Inhibit for N minutes, then auto-release. |
-| `/keep-alive:keep-alive <N>h`             | Inhibit for N hours, then auto-release. |
-| `/keep-alive:keep-alive <N>d`             | Inhibit for N days, then auto-release. |
-| `/keep-alive:keep-alive <N>`              | Bare number = minutes (Copilot parity). |
+| User input                       | Behavior |
+| -------------------------------- | -------- |
+| `/keep-alive:status`             | Print current state (mode, time remaining if applicable, inhibitor PID). |
+| `/keep-alive:on`                 | Inhibit sleep until `off` is invoked. |
+| `/keep-alive:on <N>m`            | Inhibit for N minutes, then auto-release. |
+| `/keep-alive:on <N>h`            | Inhibit for N hours, then auto-release. |
+| `/keep-alive:on <N>d`            | Inhibit for N days, then auto-release. |
+| `/keep-alive:on <N>`             | Bare number = minutes. |
+| `/keep-alive:off`                | Release the inhibitor. |
+| `/keep-alive:busy`               | Inhibit only while Claude is actively processing (started/stopped by hooks on `UserPromptSubmit`/`Stop`). |
 
-The doubled `keep-alive:keep-alive` is the price of Claude Code's mandatory namespacing. Tab-completion makes it a single keystroke after `/k`. The README will explain this clearly so the redundancy doesn't feel like a bug.
+This is a small, deliberate divergence from Copilot CLI's surface (`/keep-alive 30m` becomes `/keep-alive:on 30m`). The semantic mapping is one-to-one; only the verb-placement differs.
 
 ## 4. Architecture
 
 Three pieces interact:
 
-1. **Slash command** (`commands/keep-alive.md`) — a markdown prompt restricted to the Bash tool. Tells Claude to invoke `keep-alive $ARGUMENTS` and report output verbatim, or `keep-alive status` when no args were passed. No logic, just dispatch.
+1. **Slash commands** (`commands/on.md`, `off.md`, `busy.md`, `status.md`) — four small markdown prompts, each restricted to the Bash tool. Each tells Claude to invoke the helper script with a fixed verb (`on`, `off`, `busy`, `status`) plus any `$ARGUMENTS` (used only by `on` for the optional duration). No logic, just dispatch.
 2. **Helper script** (`bin/keep-alive`) — a POSIX-sh script added to the Bash tool's `PATH` while the plugin is enabled. All real work lives here: argument parsing, platform detection, inhibitor lifecycle, state management.
 3. **Hooks** (`hooks/hooks.json`) — register a `UserPromptSubmit` and a `Stop` hook. Both invoke `keep-alive --busy-event=start|stop` in the background. These are cheap no-ops unless the state file says `mode=busy`. This is what makes `busy` mode work without polling.
 
@@ -54,7 +54,10 @@ claude-code-keep-alive/                   public GitHub repo, also IS the plugin
 ├── bin/
 │   └── keep-alive                        POSIX-sh script, executable, added to PATH
 ├── commands/
-│   └── keep-alive.md                     slash command (frontmatter + body)
+│   ├── on.md                             /keep-alive:on [duration]
+│   ├── off.md                            /keep-alive:off
+│   ├── busy.md                           /keep-alive:busy
+│   └── status.md                         /keep-alive:status
 ├── hooks/
 │   └── hooks.json                        UserPromptSubmit + Stop integration
 ├── tests/
@@ -115,32 +118,60 @@ Single-repo-doubles-as-marketplace is the standard pattern for one-plugin distri
 }
 ```
 
-### 6.3 `commands/keep-alive.md`
+### 6.3 Slash command files
 
+All four files share the same shape: tight frontmatter, a one-line instruction, `allowed-tools` locked to `Bash`. This prevents the LLM from wandering off into editing files or asking clarifying questions when the user just wanted to flip a toggle.
+
+**`commands/on.md`**
 ```markdown
 ---
-description: Prevent the machine from sleeping during this Claude Code session (mirrors GitHub Copilot CLI /keep-alive)
-argument-hint: "[on | off | busy | <N>m | <N>h | <N>d]"
+description: Prevent the machine from sleeping (optionally for a fixed duration)
+argument-hint: "[<N>m | <N>h | <N>d | <N>]"
 allowed-tools: ["Bash"]
 ---
 
-Run the following shell command using the Bash tool and print its stdout/stderr
-verbatim, with no commentary, no summarization, and no follow-up suggestions:
-
-If $ARGUMENTS is empty, run: `keep-alive status`
-Otherwise run: `keep-alive $ARGUMENTS`
+Run `keep-alive on $ARGUMENTS` using the Bash tool and print its stdout/stderr
+verbatim, with no commentary, no summarization, and no follow-up suggestions.
 ```
 
-Restricting `allowed-tools` to `Bash` prevents the LLM from wandering off into editing files or asking clarifying questions when the user just wanted a status toggle.
+**`commands/off.md`**
+```markdown
+---
+description: Release the keep-alive inhibitor and let the machine sleep normally
+allowed-tools: ["Bash"]
+---
+
+Run `keep-alive off` using the Bash tool and print its stdout/stderr verbatim.
+```
+
+**`commands/busy.md`**
+```markdown
+---
+description: Inhibit sleep only while Claude is actively processing
+allowed-tools: ["Bash"]
+---
+
+Run `keep-alive busy` using the Bash tool and print its stdout/stderr verbatim.
+```
+
+**`commands/status.md`**
+```markdown
+---
+description: Show current keep-alive state
+allowed-tools: ["Bash"]
+---
+
+Run `keep-alive status` using the Bash tool and print its stdout/stderr verbatim.
+```
 
 ### 6.4 `bin/keep-alive` — Behavior
 
 **Argument grammar:**
 - `` (empty) or `status` → print current state
 - `on` → activate continuous inhibitor
+- `on <N>[mhd]` (or bare `on <N>` → minutes) → activate inhibitor with auto-expiry
 - `off` → release inhibitor, clear state
 - `busy` → set mode=busy; hooks will start/stop the inhibitor
-- `<N>[mhd]` (e.g. `30m`, `8h`, `1d`, or bare `30` → minutes) → activate inhibitor with auto-expiry
 - `--busy-event=start` / `--busy-event=stop` → internal, invoked only by hooks
 
 **Platform detection** (via `uname -s`):
@@ -209,29 +240,30 @@ The hook fires in every Claude Code session whenever the plugin is installed and
 
 ### 7.1 `on` then walk away
 
-1. User types `/keep-alive:keep-alive on`.
+1. User types `/keep-alive:on`.
 2. Claude's Bash tool runs `keep-alive on`.
 3. Script takes flock, reads state (mode=off, no PID), spawns `caffeinate -dis` detached, records new PID, sets mode=on, releases flock.
 4. Script prints `keep-alive: on (since ..., PID ...)`.
 5. User closes laptop lid → display sleeps but system stays awake.
-6. Later, user runs `/keep-alive:keep-alive off`. Script kills PID, clears state, prints `keep-alive: off`.
+6. Later, user runs `/keep-alive:off`. Script kills PID, clears state, prints `keep-alive: off`.
 
 ### 7.2 `busy` mode across a long agent run
 
-1. User types `/keep-alive:keep-alive busy`. Script writes mode=busy. No inhibitor running yet.
+1. User types `/keep-alive:busy`. Script writes mode=busy. No inhibitor running yet.
 2. User submits a prompt that triggers a long agent loop.
 3. `UserPromptSubmit` hook fires → `keep-alive --busy-event=start`. Script sees mode=busy and no live PID → spawns inhibitor, saves PID.
 4. Agent runs for 20 minutes, machine stays awake.
 5. Agent stops, Claude returns control to user. `Stop` hook fires → `keep-alive --busy-event=stop`. Script kills PID, leaves mode=busy.
 6. User reads output for 5 minutes; machine is free to sleep.
 7. User submits next prompt. `UserPromptSubmit` fires → inhibitor starts again. Loop continues.
-8. User runs `/keep-alive:keep-alive off`. Script clears mode entirely; hooks become no-ops.
+8. User runs `/keep-alive:off`. Script clears mode entirely; hooks become no-ops.
 
 ### 7.3 Duration mode
 
-1. User types `/keep-alive:keep-alive 30m`.
-2. Script spawns `timeout 1800 caffeinate -dis` detached, saves PID, sets mode=duration, expires_at=now+30m.
-3. After 30 minutes, `timeout` kills `caffeinate`. Next `status` call notices the PID is gone, clears state, reports `off`.
+1. User types `/keep-alive:on 30m`.
+2. Claude's Bash tool runs `keep-alive on 30m`.
+3. Script spawns `timeout 1800 caffeinate -dis` detached, saves PID, sets mode=duration, expires_at=now+30m.
+4. After 30 minutes, `timeout` kills `caffeinate`. Next `status` call notices the PID is gone, clears state, reports `off`.
 
 ## 8. Installation Flow
 
@@ -240,7 +272,7 @@ The hook fires in every Claude Code session whenever the plugin is installed and
 2. /plugin marketplace add <github-user>/claude-code-keep-alive
 3. /plugin install keep-alive@claude-code-keep-alive
 4. /reload-plugins   (or restart)
-5. /keep-alive:keep-alive on
+5. /keep-alive:on
 ```
 
 For development:
@@ -255,7 +287,7 @@ claude --plugin-dir /path/to/claude-code-keep-alive
 | -------------------------------------- | -------- |
 | Unsupported OS (Windows v0.1, other)    | stderr message, exit 2. Slash command surfaces stderr to the user verbatim. |
 | `caffeinate` / `systemd-inhibit` absent | stderr install hint, exit 3. |
-| Invalid args (`/keep-alive 5x`)         | stderr usage, exit 1. |
+| Invalid args (`keep-alive on 5x`)       | stderr usage, exit 1. |
 | State file corrupt or unparseable       | stderr warning, reset state, exit 4. |
 | Stale PID (process already exited)      | silently clean state, continue with intended action. |
 | Concurrent invocation                   | `flock` serializes. Lock is held briefly; spawned inhibitors live outside the lock. |
@@ -273,23 +305,24 @@ claude --plugin-dir /path/to/claude-code-keep-alive
   - `on` → `on` is idempotent (does not spawn a second inhibitor)
   - `on` → `off` kills PID and reports `off`
   - `off` on empty state is a no-op success
-  - `30m` schedules expiry; simulated PID death triggers stale cleanup on next `status`
+  - `on 30m` schedules expiry; simulated PID death triggers stale cleanup on next `status`
   - `busy` alone does not spawn an inhibitor
   - `busy` + `--busy-event=start` spawns; `--busy-event=stop` tears down; mode=busy persists
   - `--busy-event=*` with mode=off is a no-op
   - Concurrent `on` invocations serialize via flock; only one PID winds up in state
   - Stale PID in state file is cleaned silently
-  - Bare integer argument (`30`) is parsed as minutes
-  - Invalid argument exits 1 with usage
+  - Bare integer argument (`on 30`) is parsed as minutes
+  - Invalid duration (`on 5x`) exits 1 with usage
+  - Unknown verb (`keep-alive foo`) exits 1 with usage
   - Missing inhibitor binary exits 3 with install hint
 
 **CI:** GitHub Actions matrix on `macos-latest` (real `caffeinate` available) and `ubuntu-latest` (mock inhibitor, since CI runners lack `systemd-inhibit` for an interactive session). Each runner installs `bats-core` and runs the suite.
 
 **Manual smoke test (documented in README):**
 1. Load with `--plugin-dir`.
-2. `/keep-alive:keep-alive on`; run `pmset -g assertions` (macOS) or `systemd-inhibit --list` (Linux) to confirm the inhibit is registered.
-3. `/keep-alive:keep-alive off`; confirm assertion is released.
-4. `/keep-alive:keep-alive busy`; submit a prompt; assert inhibit appears during work and disappears after `Stop`.
+2. `/keep-alive:on`; run `pmset -g assertions` (macOS) or `systemd-inhibit --list` (Linux) to confirm the inhibit is registered.
+3. `/keep-alive:off`; confirm assertion is released.
+4. `/keep-alive:busy`; submit a prompt; assert inhibit appears during work and disappears after `Stop`.
 
 ## 11. Security and Privacy
 
@@ -316,4 +349,3 @@ claude --plugin-dir /path/to/claude-code-keep-alive
 1. **GitHub username/org**: Plugin manifest and README contain `<github-user>` placeholders. Final repo URL determines these. Implementation plan should treat this as a one-line fill-in, not a code change.
 2. **Hook event names**: This design assumes `UserPromptSubmit` and `Stop` are the right names. Implementation plan will verify against current Claude Code hook documentation; if they have changed, equivalent "session became busy" / "session became idle" events will be substituted.
 3. **`allowed-tools` syntax in command frontmatter**: Design assumes JSON-array `["Bash"]`. Implementation plan will confirm exact frontmatter shape (some docs show whitespace-separated string). Choice does not affect overall design.
-4. **Single command vs. shortcut commands**: Current design ships one slash command, invoked as `/keep-alive:keep-alive <args>` for full Copilot parity. An alternative is to additionally ship `on.md`, `off.md`, `busy.md`, `status.md` so users can type `/keep-alive:on`, `/keep-alive:off`, etc. Cleaner UX, costs four extra one-line markdown files. v0.1 ships only the parity command; shortcuts are deferred to v0.2 unless the user prefers them now.
