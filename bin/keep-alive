@@ -115,7 +115,27 @@ refresh_state() {
   fi
 }
 
-cmd_status() {
+with_lock() {
+  # Run "$@" under an exclusive lock on $LOCK_FILE.
+  if command -v flock >/dev/null 2>&1; then
+    ( flock -x 9; "$@" ) 9>"$LOCK_FILE"
+  else
+    # mkdir-based fallback (atomic on all POSIX filesystems).
+    while ! mkdir "$LOCK_FILE.d" 2>/dev/null; do sleep 0.05; done
+    trap 'rmdir "$LOCK_FILE.d" 2>/dev/null' EXIT INT TERM
+    "$@"
+    rc=$?
+    rmdir "$LOCK_FILE.d" 2>/dev/null || true
+    trap - EXIT INT TERM
+    return $rc
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Internal (unlocked) command implementations
+# ---------------------------------------------------------------------------
+
+_cmd_status() {
   refresh_state
   case "$mode" in
     off|"") echo "keep-alive: off" ;;
@@ -131,19 +151,11 @@ cmd_status() {
   esac
 }
 
-cmd_on() {
-  duration_arg="${1:-}"
-  if [ -n "$duration_arg" ]; then
-    if ! secs=$(parse_duration "$duration_arg"); then
-      echo "keep-alive: invalid duration '$duration_arg' (use Nm, Nh, Nd, or bare N for minutes)" >&2
-      exit 1
-    fi
-  else
-    secs=0
-  fi
+_cmd_on() {
+  secs="$1"
   refresh_state
   if { [ "$mode" = on ] || [ "$mode" = duration ]; } && is_alive "$pid"; then
-    cmd_status
+    _cmd_status
     return 0
   fi
   new_pid=$(spawn_inhibitor "$secs")
@@ -154,10 +166,10 @@ cmd_on() {
   else
     write_state on "$new_pid" "$started" ""
   fi
-  cmd_status
+  _cmd_status
 }
 
-cmd_off() {
+_cmd_off() {
   refresh_state
   if [ -n "$pid" ] && is_alive "$pid"; then
     kill "$pid" 2>/dev/null || true
@@ -168,20 +180,20 @@ cmd_off() {
     done
   fi
   write_state off "" "" ""
-  cmd_status
+  _cmd_status
 }
 
-cmd_busy() {
+_cmd_busy() {
   refresh_state
   if [ -n "$pid" ] && is_alive "$pid"; then
     kill "$pid" 2>/dev/null || true
     for _ in 1 2 3 4 5; do is_alive "$pid" || break; sleep 0.1; done
   fi
   write_state busy "" "" ""
-  cmd_status
+  _cmd_status
 }
 
-cmd_busy_event() {
+_cmd_busy_event() {
   event="$1"
   refresh_state
   [ "$mode" = busy ] || return 0
@@ -199,6 +211,29 @@ cmd_busy_event() {
       write_state busy "" "" "" ;;
   esac
 }
+
+# ---------------------------------------------------------------------------
+# Public (locked) command wrappers
+# ---------------------------------------------------------------------------
+
+cmd_status()     { with_lock _cmd_status; }
+
+cmd_on() {
+  duration_arg="${1:-}"
+  if [ -n "$duration_arg" ]; then
+    if ! secs=$(parse_duration "$duration_arg"); then
+      echo "keep-alive: invalid duration '$duration_arg' (use Nm, Nh, Nd, or bare N for minutes)" >&2
+      exit 1
+    fi
+  else
+    secs=0
+  fi
+  with_lock _cmd_on "$secs"
+}
+
+cmd_off()        { with_lock _cmd_off; }
+cmd_busy()       { with_lock _cmd_busy; }
+cmd_busy_event() { with_lock _cmd_busy_event "$@"; }
 
 usage() {
   cat <<EOF

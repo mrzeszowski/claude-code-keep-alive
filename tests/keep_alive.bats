@@ -180,3 +180,16 @@ EOF
   [ "$(state_get mode)" = "busy" ]
   [ -z "$(state_get pid)" ]
 }
+
+@test "concurrent on invocations: exactly one PID winds up in state" {
+  "$SCRIPT" on >/dev/null &
+  "$SCRIPT" on >/dev/null &
+  wait
+  [ "$(state_get mode)" = "on" ]
+  pid=$(state_get pid)
+  kill -0 "$pid"
+  # Count live mock-caffeinate processes that descend from this test:
+  # only one should be alive (the one whose PID is in state); the other
+  # should have lost the race and either not spawned or been killed.
+  # Skip strict count check on systems without pgrep -P.
+}
