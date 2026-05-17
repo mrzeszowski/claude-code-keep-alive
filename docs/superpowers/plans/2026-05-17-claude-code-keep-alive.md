@@ -278,7 +278,7 @@ cmd_status() {
 }
 
 usage() {
-  cat >&2 <<EOF
+  cat <<EOF
 Usage: keep-alive [status | on [DURATION] | off | busy | --busy-event=start | --busy-event=stop]
 
   status              Show current state (default when no args).
@@ -299,7 +299,7 @@ main() {
   case "$1" in
     status) cmd_status ;;
     -h|--help) usage; exit 0 ;;
-    *) usage; exit 1 ;;
+    *) usage >&2; exit 1 ;;
   esac
 }
 
