@@ -116,3 +116,38 @@ load test_helper
   [ -z "$(state_get pid)" ]
   ! kill -0 "$pid" 2>/dev/null
 }
+
+@test "busy + --busy-event=start: spawns inhibitor, mode stays busy" {
+  "$SCRIPT" busy
+  run "$SCRIPT" --busy-event=start
+  [ "$status" -eq 0 ]
+  [ "$(state_get mode)" = "busy" ]
+  pid=$(state_get pid)
+  [ -n "$pid" ]
+  kill -0 "$pid"
+}
+
+@test "busy + start + stop: inhibitor torn down, mode stays busy" {
+  "$SCRIPT" busy
+  "$SCRIPT" --busy-event=start
+  pid=$(state_get pid)
+  run "$SCRIPT" --busy-event=stop
+  [ "$status" -eq 0 ]
+  [ "$(state_get mode)" = "busy" ]
+  [ -z "$(state_get pid)" ]
+  ! kill -0 "$pid" 2>/dev/null
+}
+
+@test "--busy-event=start when mode=off: no-op" {
+  run "$SCRIPT" --busy-event=start
+  [ "$status" -eq 0 ]
+  [ -z "$(state_get pid)" ]
+}
+
+@test "--busy-event=start is idempotent: second start does not respawn" {
+  "$SCRIPT" busy
+  "$SCRIPT" --busy-event=start
+  first_pid=$(state_get pid)
+  "$SCRIPT" --busy-event=start
+  [ "$(state_get pid)" = "$first_pid" ]
+}

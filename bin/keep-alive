@@ -167,6 +167,25 @@ cmd_busy() {
   cmd_status
 }
 
+cmd_busy_event() {
+  event="$1"
+  read_state
+  [ "$mode" = busy ] || return 0
+  case "$event" in
+    start)
+      if [ -z "$pid" ] || ! is_alive "$pid"; then
+        new_pid=$(spawn_inhibitor 0)
+        write_state busy "$new_pid" "$(now_iso)" ""
+      fi ;;
+    stop)
+      if [ -n "$pid" ] && is_alive "$pid"; then
+        kill "$pid" 2>/dev/null || true
+        for _ in 1 2 3 4 5; do is_alive "$pid" || break; sleep 0.1; done
+      fi
+      write_state busy "" "" "" ;;
+  esac
+}
+
 usage() {
   cat <<EOF
 Usage: keep-alive [status | on [DURATION] | off | busy | --busy-event=start | --busy-event=stop]
@@ -191,6 +210,8 @@ main() {
     on)     shift; cmd_on "$@" ;;
     off)    cmd_off ;;
     busy)   cmd_busy ;;
+    --busy-event=start) cmd_busy_event start ;;
+    --busy-event=stop)  cmd_busy_event stop ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 1 ;;
   esac
