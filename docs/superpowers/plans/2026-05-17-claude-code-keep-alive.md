@@ -419,7 +419,7 @@ spawn_inhibitor() {
         --why="Active Claude Code session" \
         sleep "$sleep_arg" </dev/null >/dev/null 2>&1 & ;;
   esac
-  echo $!
+  echo "$!"
 }
 ```
 
