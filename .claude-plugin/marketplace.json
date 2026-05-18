@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-code-keep-alive",
+  "description": "Single-plugin marketplace for the keep-alive plugin",
+  "owner": {
+    "name": "Marcin Rzeszowski",
+    "email": "mrzeszowski@outlook.com"
+  },
+  "plugins": [
+    {
+      "name": "keep-alive",
+      "description": "Prevents your machine from sleeping during Claude Code sessions",
+      "category": "productivity",
+      "version": "0.1.0",
+      "source": "./",
+      "author": { "name": "Marcin Rzeszowski" },
+      "homepage": "https://github.com/mrzeszowski/claude-code-keep-alive",
+      "tags": ["productivity", "sleep", "caffeinate", "system"]
+    }
+  ]
+}

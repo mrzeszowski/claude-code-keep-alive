@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+# Mock for Linux `systemd-inhibit`. Strips its own --what/--who/--why flags
+# (both `--flag value` and `--flag=value` forms), then execs the trailing
+# command. This preserves the real semantic that killing the wrapper
+# terminates the inhibit, because there is no wrapper — the trailing
+# command (typically `sleep ...`) becomes the captured PID.
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --what=*|--who=*|--why=*) shift ;;
+    --what|--who|--why) shift; [ $# -gt 0 ] && shift ;;
+    --mode=*|--mode) shift; [ "${1:-}" ] && shift ;;
+    --no-pager|--no-ask-password) shift ;;
+    --) shift; break ;;
+    -*) shift ;;
+    *) break ;;
+  esac
+done
+exec "$@"

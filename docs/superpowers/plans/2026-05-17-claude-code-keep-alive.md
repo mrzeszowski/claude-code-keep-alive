@@ -121,7 +121,7 @@ setup() {
 teardown() {
   if [ -f "$KEEP_ALIVE_STATE_DIR/state" ]; then
     pid=$(grep '^pid=' "$KEEP_ALIVE_STATE_DIR/state" 2>/dev/null \
-            | sed 's/^pid="\?//;s/"\?$//')
+            | sed -E 's/^pid="?//;s/"?$//')
     if [ -n "$pid" ]; then
       kill -9 "$pid" 2>/dev/null || true
     fi
@@ -159,7 +159,7 @@ Make it executable: `chmod +x tests/mocks/caffeinate`.
 while [ $# -gt 0 ]; do
   case "$1" in
     --what=*|--who=*|--why=*) shift ;;
-    --what|--who|--why) shift 2 ;;
+    --what|--who|--why) shift; [ $# -gt 0 ] && shift ;;
     --mode=*|--mode) shift; [ "${1:-}" ] && shift ;;
     --no-pager|--no-ask-password) shift ;;
     --) shift; break ;;
@@ -278,7 +278,7 @@ cmd_status() {
 }
 
 usage() {
-  cat >&2 <<EOF
+  cat <<EOF
 Usage: keep-alive [status | on [DURATION] | off | busy | --busy-event=start | --busy-event=stop]
 
   status              Show current state (default when no args).
@@ -299,7 +299,7 @@ main() {
   case "$1" in
     status) cmd_status ;;
     -h|--help) usage; exit 0 ;;
-    *) usage; exit 1 ;;
+    *) usage >&2; exit 1 ;;
   esac
 }
 
@@ -402,24 +402,28 @@ EOF
 
 spawn_inhibitor() {
   # $1 = duration in seconds (0 or empty = forever). Echoes the PID.
+  # fd 9 is the flock descriptor from with_lock; close it in the child so it
+  # never holds the exclusive lock after the parent subshell exits.
   duration_secs="${1:-0}"
   case "$(detect_platform)" in
     darwin)
       if [ "$duration_secs" -gt 0 ]; then
-        nohup caffeinate -t "$duration_secs" -dis </dev/null >/dev/null 2>&1 &
+        nohup caffeinate -t "$duration_secs" -dis </dev/null >/dev/null 2>&1 9>&- &
       else
-        nohup caffeinate -dis </dev/null >/dev/null 2>&1 &
+        nohup caffeinate -dis </dev/null >/dev/null 2>&1 9>&- &
       fi ;;
     linux)
-      sleep_arg=infinity
+      # Use a large finite value instead of `sleep infinity`: POSIX only mandates
+      # integer support and `infinity` is GNU-only; some environments reject it.
+      sleep_arg=99999999
       [ "$duration_secs" -gt 0 ] && sleep_arg="$duration_secs"
       nohup systemd-inhibit \
         --what=idle:sleep \
         --who=claude-code-keep-alive \
         --why="Active Claude Code session" \
-        sleep "$sleep_arg" </dev/null >/dev/null 2>&1 & ;;
+        sleep "$sleep_arg" </dev/null >/dev/null 2>&1 9>&- & ;;
   esac
-  echo $!
+  echo "$!"
 }
 ```
 
@@ -1096,13 +1100,22 @@ git push origin main
 }
 
 @test "missing inhibitor binary: exit 3 with install hint" {
-  # Empty PATH so neither caffeinate nor systemd-inhibit mocks resolve.
-  PATH="/no-such-dir" run "$SCRIPT" on
+  # Force platform=linux so the script looks for systemd-inhibit (not present
+  # on macOS). Strip the mocks dir from PATH so the mock systemd-inhibit is
+  # also gone.  This reliably tests exit-3 without gutting the system PATH.
+  CLEAN_PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "mocks" | tr '\n' ':' | sed 's/:$//')
+  KEEP_ALIVE_PLATFORM=linux PATH="$CLEAN_PATH" run "$SCRIPT" on
   [ "$status" -eq 3 ]
   echo "$output" | grep -qi "not found"
 }
 
-@test "help: -h prints usage to stderr, exit 0" {
+@test "unsupported platform (windows): exit 2 with hint" {
+  KEEP_ALIVE_PLATFORM=windows run "$SCRIPT" on
+  [ "$status" -eq 2 ]
+  echo "$output" | grep -qi "not yet supported"
+}
+
+@test "help: -h prints usage to stdout, exit 0" {
   run "$SCRIPT" -h
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "Usage:"
@@ -1120,7 +1133,8 @@ Add helper:
 
 ```sh
 ensure_inhibitor_binary() {
-  case "$(detect_platform)" in
+  _platform=$(detect_platform)
+  case "$_platform" in
     darwin)
       command -v caffeinate >/dev/null 2>&1 || {
         echo "keep-alive: 'caffeinate' not found in PATH (ships with macOS; check your PATH)" >&2
@@ -1135,11 +1149,13 @@ ensure_inhibitor_binary() {
       echo "keep-alive: Windows not yet supported in v0.1; contributions welcome at https://github.com/mrzeszowski/claude-code-keep-alive" >&2
       exit 2 ;;
     *)
-      echo "keep-alive: unsupported platform '$(uname -s)'" >&2
+      echo "keep-alive: unsupported platform '$_platform'" >&2
       exit 2 ;;
   esac
 }
 ```
+
+**Note:** `detect_platform` honors a `KEEP_ALIVE_PLATFORM` environment variable as a test-only override (mirrors the `KEEP_ALIVE_STATE_DIR` pattern). When set and non-empty, its value is returned instead of the `uname -s` mapping. This is what makes test 26 portable on macOS — we force `linux` so `command -v systemd-inhibit` is the deciding check, regardless of whether `/usr/bin/caffeinate` is present.
 
 Call `ensure_inhibitor_binary` at the top of `cmd_on` (before locking) and at the top of `cmd_busy` (so `busy` also fails fast on unsupported platforms, even though it doesn't spawn immediately). Do NOT call it from `cmd_busy_event` — hooks fire on every prompt and must stay silent on unsupported platforms.
 
@@ -1629,6 +1645,7 @@ jobs:
 
   test:
     needs: lint
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
@@ -1639,7 +1656,7 @@ jobs:
 
       - name: Install bats (Ubuntu)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y bats
+        uses: bats-core/bats-action@3.0.0
 
       - name: Install bats (macOS)
         if: runner.os == 'macOS'
