@@ -18,6 +18,11 @@ teardown() {
       kill -9 "$pid" 2>/dev/null || true
     fi
   fi
+  # Kill stray mock inhibitor processes that may not be recorded in the state
+  # file (e.g., a process that lost an idempotency race).  Use the distinctive
+  # sleep durations chosen by the mocks so we don't disturb unrelated sleeps.
+  pkill -9 -f "sleep 99999999" 2>/dev/null || true   # Linux mock (systemd-inhibit path)
+  pkill -9 -f "sleep 9999$"    2>/dev/null || true   # macOS mock (caffeinate path)
   rm -rf "$TMPDIR_TEST"
 }
 

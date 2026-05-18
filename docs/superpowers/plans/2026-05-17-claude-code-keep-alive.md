@@ -402,22 +402,26 @@ EOF
 
 spawn_inhibitor() {
   # $1 = duration in seconds (0 or empty = forever). Echoes the PID.
+  # fd 9 is the flock descriptor from with_lock; close it in the child so it
+  # never holds the exclusive lock after the parent subshell exits.
   duration_secs="${1:-0}"
   case "$(detect_platform)" in
     darwin)
       if [ "$duration_secs" -gt 0 ]; then
-        nohup caffeinate -t "$duration_secs" -dis </dev/null >/dev/null 2>&1 &
+        nohup caffeinate -t "$duration_secs" -dis </dev/null >/dev/null 2>&1 9>&- &
       else
-        nohup caffeinate -dis </dev/null >/dev/null 2>&1 &
+        nohup caffeinate -dis </dev/null >/dev/null 2>&1 9>&- &
       fi ;;
     linux)
-      sleep_arg=infinity
+      # Use a large finite value instead of `sleep infinity`: POSIX only mandates
+      # integer support and `infinity` is GNU-only; some environments reject it.
+      sleep_arg=99999999
       [ "$duration_secs" -gt 0 ] && sleep_arg="$duration_secs"
       nohup systemd-inhibit \
         --what=idle:sleep \
         --who=claude-code-keep-alive \
         --why="Active Claude Code session" \
-        sleep "$sleep_arg" </dev/null >/dev/null 2>&1 & ;;
+        sleep "$sleep_arg" </dev/null >/dev/null 2>&1 9>&- & ;;
   esac
   echo "$!"
 }
@@ -1641,6 +1645,7 @@ jobs:
 
   test:
     needs: lint
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
@@ -1651,7 +1656,7 @@ jobs:
 
       - name: Install bats (Ubuntu)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y bats
+        uses: bats-core/bats-action@3.0.0
 
       - name: Install bats (macOS)
         if: runner.os == 'macOS'
