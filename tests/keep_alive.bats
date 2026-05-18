@@ -223,7 +223,7 @@ EOF
   echo "$output" | grep -qi "not yet supported"
 }
 
-@test "help: -h prints usage to stderr, exit 0" {
+@test "help: -h prints usage to stdout, exit 0" {
   run "$SCRIPT" -h
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "Usage:"
