@@ -201,11 +201,18 @@ EOF
 }
 
 @test "missing inhibitor binary: exit 3 with install hint" {
-  # Force platform=linux so the script looks for systemd-inhibit (not present
-  # on macOS). Strip the mocks dir from PATH so the mock systemd-inhibit is
-  # also gone.  This reliably tests exit-3 without gutting the system PATH.
-  CLEAN_PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "mocks" | tr '\n' ':' | sed 's/:$//')
-  KEEP_ALIVE_PLATFORM=linux PATH="$CLEAN_PATH" run "$SCRIPT" on
+  # Force platform=linux so the script looks for systemd-inhibit.
+  # Build a minimal PATH that contains only the tools the script needs
+  # (mkdir, date, cat, etc.) but deliberately omits systemd-inhibit.
+  # This works on Ubuntu (where /usr/bin/systemd-inhibit exists) and
+  # macOS (where it doesn't), without relying on platform-specific gaps.
+  _tmpbin="$(mktemp -d -t keepalive-nobin-XXXXXX)"
+  for _t in mkdir date cat grep sed kill sleep sh; do
+    _tp="$(command -v "$_t" 2>/dev/null)" && ln -sf "$_tp" "$_tmpbin/$_t" || true
+  done
+  # Deliberately no systemd-inhibit in _tmpbin
+  KEEP_ALIVE_PLATFORM=linux PATH="$_tmpbin" run "$SCRIPT" on
+  rm -rf "$_tmpbin"
   [ "$status" -eq 3 ]
   echo "$output" | grep -qi "not found"
 }
