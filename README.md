@@ -1,8 +1,7 @@
 <div align="center">
 
 # ☕ Claude Code Keep Alive Plugin
-
-> Keep your machine awake while Claude works.
+Keep your machine awake while Claude works.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/mrzeszowski/claude-code-keep-alive/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/mrzeszowski/claude-code-keep-alive/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/mrzeszowski/claude-code-keep-alive?style=flat-square)](LICENSE)
