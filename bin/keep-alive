@@ -11,7 +11,9 @@ mkdir -p "$STATE_DIR"
 read_state() {
   mode=off
   pid=
+  # shellcheck disable=SC2034  # populated by sourcing state file; persisted but not read in shell logic
   started_at=
+  # shellcheck disable=SC2034  # populated by sourcing state file; persisted but not read in shell logic
   expires_at=
   if [ -f "$STATE_FILE" ]; then
     # shellcheck disable=SC1090
@@ -168,16 +170,15 @@ with_lock() {
 _cmd_status() {
   refresh_state
   case "$mode" in
-    off|"") echo "keep-alive: off" ;;
-    on)        echo "keep-alive: on (since $started_at, PID $pid)" ;;
-    duration)  echo "keep-alive: duration (expires $expires_at, PID $pid)" ;;
+    on)       echo "☕ Keep-alive on — machine won't sleep." ;;
+    duration) echo "☕ Keep-alive on (timed) — machine won't sleep." ;;
     busy)
       if [ -n "$pid" ]; then
-        echo "keep-alive: busy (active, PID $pid)"
+        echo "💤 Busy mode — currently inhibiting sleep."
       else
-        echo "keep-alive: busy (no inhibitor currently active)"
+        echo "💤 Busy mode — idle, waiting for next prompt."
       fi ;;
-    *) echo "keep-alive: off" ;;
+    *)        echo "✔  Keep-alive off — machine can sleep normally." ;;
   esac
 }
 

@@ -5,19 +5,19 @@ load test_helper
 @test "status: empty state prints off" {
   run "$SCRIPT" status
   [ "$status" -eq 0 ]
-  [ "$output" = "keep-alive: off" ]
+  [ "$output" = "✔  Keep-alive off — machine can sleep normally." ]
 }
 
 @test "no args: also prints status" {
   run "$SCRIPT"
   [ "$status" -eq 0 ]
-  [ "$output" = "keep-alive: off" ]
+  [ "$output" = "✔  Keep-alive off — machine can sleep normally." ]
 }
 
 @test "on: spawns inhibitor and reports on" {
   run "$SCRIPT" on
   [ "$status" -eq 0 ]
-  echo "$output" | grep -E '^keep-alive: on \(since [0-9TZ:-]+, PID [0-9]+\)$'
+  [ "$output" = "☕ Keep-alive on — machine won't sleep." ]
   pid=$(state_get pid)
   [ -n "$pid" ]
   kill -0 "$pid"
@@ -43,14 +43,14 @@ load test_helper
   pid=$(state_get pid)
   run "$SCRIPT" off
   [ "$status" -eq 0 ]
-  [ "$output" = "keep-alive: off" ]
+  [ "$output" = "✔  Keep-alive off — machine can sleep normally." ]
   ! kill -0 "$pid" 2>/dev/null
 }
 
 @test "off on empty state is a no-op success" {
   run "$SCRIPT" off
   [ "$status" -eq 0 ]
-  [ "$output" = "keep-alive: off" ]
+  [ "$output" = "✔  Keep-alive off — machine can sleep normally." ]
 }
 
 @test "off clears mode and pid in state file" {
@@ -63,7 +63,7 @@ load test_helper
 @test "on 30m: mode=duration, expires_at set" {
   run "$SCRIPT" on 30m
   [ "$status" -eq 0 ]
-  echo "$output" | grep -E '^keep-alive: duration \(expires [0-9TZ:-]+, PID [0-9]+\)$'
+  [ "$output" = "☕ Keep-alive on (timed) — machine won't sleep." ]
   [ "$(state_get mode)" = "duration" ]
   [ -n "$(state_get expires_at)" ]
 }
@@ -97,7 +97,7 @@ load test_helper
 @test "busy: sets mode=busy, does not spawn an inhibitor" {
   run "$SCRIPT" busy
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "keep-alive: busy (no inhibitor currently active)"
+  [ "$output" = "💤 Busy mode — idle, waiting for next prompt." ]
   [ "$(state_get mode)" = "busy" ]
   [ -z "$(state_get pid)" ]
 }
@@ -125,6 +125,14 @@ load test_helper
   pid=$(state_get pid)
   [ -n "$pid" ]
   kill -0 "$pid"
+}
+
+@test "status after busy+start: shows currently inhibiting message" {
+  "$SCRIPT" busy
+  "$SCRIPT" --busy-event=start
+  run "$SCRIPT" status
+  [ "$status" -eq 0 ]
+  [ "$output" = "💤 Busy mode — currently inhibiting sleep." ]
 }
 
 @test "busy + start + stop: inhibitor torn down, mode stays busy" {
@@ -162,7 +170,7 @@ expires_at=""
 EOF
   run "$SCRIPT" status
   [ "$status" -eq 0 ]
-  [ "$output" = "keep-alive: off" ]
+  [ "$output" = "✔  Keep-alive off — machine can sleep normally." ]
   [ "$(state_get mode)" = "off" ]
 }
 
@@ -176,7 +184,7 @@ expires_at=""
 EOF
   run "$SCRIPT" status
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "keep-alive: busy (no inhibitor currently active)"
+  [ "$output" = "💤 Busy mode — idle, waiting for next prompt." ]
   [ "$(state_get mode)" = "busy" ]
   [ -z "$(state_get pid)" ]
 }
