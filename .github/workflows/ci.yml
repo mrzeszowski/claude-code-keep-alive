@@ -17,7 +17,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Shellcheck bin/
         uses: ludeeus/action-shellcheck@master
@@ -52,11 +52,11 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install bats (Ubuntu)
         if: runner.os == 'Linux'
-        uses: bats-core/bats-action@3.0.0
+        uses: bats-core/bats-action@4.0.0
 
       - name: Install bats (macOS)
         if: runner.os == 'macOS'
