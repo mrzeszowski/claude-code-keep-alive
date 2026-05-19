@@ -1,4 +1,17 @@
-# claude-code-keep-alive
+<div align="center">
+
+# ☕ claude-code-keep-alive
+
+> Keep your machine awake while Claude works.
+
+[![CI](https://img.shields.io/github/actions/workflow/status/mrzeszowski/claude-code-keep-alive/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/mrzeszowski/claude-code-keep-alive/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/mrzeszowski/claude-code-keep-alive?style=flat-square)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/mrzeszowski/claude-code-keep-alive?style=flat-square)](https://github.com/mrzeszowski/claude-code-keep-alive/releases)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux-6e40c9?style=flat-square)](#how-it-works)
+
+<img src="docs/demo.svg" alt="demo" width="600">
+
+</div>
 
 A [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin that prevents your machine from sleeping during long Claude Code sessions. Inspired by GitHub Copilot CLI's `/keep-alive` command.
 
