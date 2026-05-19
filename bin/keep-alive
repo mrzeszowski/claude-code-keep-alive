@@ -85,6 +85,13 @@ future_iso() {
   fi
 }
 
+_locate_win_ps1() {
+  [ -n "${KEEP_ALIVE_WIN_PS1:-}" ] && { echo "$KEEP_ALIVE_WIN_PS1"; return; }
+  _cmd=$(command -v "$(basename "$0")" 2>/dev/null)
+  _dir=$(cd "$(dirname "${_cmd:-$0}")" 2>/dev/null && pwd 2>/dev/null)
+  echo "${_dir:-$(dirname "$0")}/keep-alive-win.ps1"
+}
+
 spawn_inhibitor() {
   # $1 = duration in seconds (0 or empty = forever). Echoes the PID.
   # fd 9 is the flock descriptor from with_lock; close it in the child so it
@@ -107,6 +114,13 @@ spawn_inhibitor() {
         --who=claude-code-keep-alive \
         --why="Active Claude Code session" \
         sleep "$sleep_arg" </dev/null >/dev/null 2>&1 9>&- & ;;
+    windows)
+      _ps1=$(_locate_win_ps1)
+      if [ "$duration_secs" -gt 0 ]; then
+        nohup pwsh -NonInteractive -File "$_ps1" -Seconds "$duration_secs" </dev/null >/dev/null 2>&1 9>&- &
+      else
+        nohup pwsh -NonInteractive -File "$_ps1" </dev/null >/dev/null 2>&1 9>&- &
+      fi ;;
   esac
   echo "$!"
 }
@@ -125,8 +139,10 @@ ensure_inhibitor_binary() {
         exit 3
       } ;;
     windows)
-      echo "keep-alive: Windows not yet supported in v0.1; contributions welcome at https://github.com/mrzeszowski/claude-code-keep-alive" >&2
-      exit 2 ;;
+      command -v pwsh >/dev/null 2>&1 || {
+        echo "keep-alive: 'pwsh' not found in PATH (install PowerShell 7+: https://aka.ms/powershell)" >&2
+        exit 3
+      } ;;
     *)
       echo "keep-alive: unsupported platform '$_platform'" >&2
       exit 2 ;;
