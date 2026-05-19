@@ -56,7 +56,7 @@ jobs:
 
       - name: Install bats (Ubuntu)
         if: runner.os == 'Linux'
-        uses: bats-core/bats-action@3.0.0
+        uses: bats-core/bats-action@4.0.0
 
       - name: Install bats (macOS)
         if: runner.os == 'macOS'
