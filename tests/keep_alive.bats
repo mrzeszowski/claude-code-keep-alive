@@ -260,7 +260,8 @@ EOF
   pid=$(state_get pid)
   [ -n "$pid" ]
   kill -0 "$pid"
-  KEEP_ALIVE_PLATFORM=windows "$SCRIPT" --busy-event=stop
+  KEEP_ALIVE_PLATFORM=windows run "$SCRIPT" --busy-event=stop
+  [ "$status" -eq 0 ]
   [ "$(state_get mode)" = "busy" ]
   [ -z "$(state_get pid)" ]
   ! kill -0 "$pid" 2>/dev/null
