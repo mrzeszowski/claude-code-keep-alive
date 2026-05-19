@@ -16,18 +16,20 @@ jobs:
       - name: Verify plugin.json version matches tag
         run: |
           TAG="${GITHUB_REF_NAME#v}"
+          BASE="${TAG%%-*}"
           MANIFEST=$(jq -r .version .claude-plugin/plugin.json)
-          if [ "$TAG" != "$MANIFEST" ]; then
-            echo "::error::Tag $TAG does not match plugin.json version $MANIFEST"
+          if [ "$BASE" != "$MANIFEST" ]; then
+            echo "::error::Tag base version $BASE does not match plugin.json version $MANIFEST (tag was v$TAG)"
             exit 1
           fi
 
       - name: Verify marketplace.json version matches tag
         run: |
           TAG="${GITHUB_REF_NAME#v}"
+          BASE="${TAG%%-*}"
           MANIFEST=$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)
-          if [ "$TAG" != "$MANIFEST" ]; then
-            echo "::error::Tag $TAG does not match marketplace.json plugin version $MANIFEST"
+          if [ "$BASE" != "$MANIFEST" ]; then
+            echo "::error::Tag base version $BASE does not match marketplace.json plugin version $MANIFEST (tag was v$TAG)"
             exit 1
           fi
 
