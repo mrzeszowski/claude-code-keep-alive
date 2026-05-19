@@ -1,6 +1,6 @@
 <div align="center">
 
-# ☕ claude-code-keep-alive
+# ☕ Claude Code Keep Alive Plugin
 
 > Keep your machine awake while Claude works.
 
