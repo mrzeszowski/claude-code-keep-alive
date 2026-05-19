@@ -127,6 +127,14 @@ load test_helper
   kill -0 "$pid"
 }
 
+@test "status after busy+start: shows currently inhibiting message" {
+  "$SCRIPT" busy
+  "$SCRIPT" --busy-event=start
+  run "$SCRIPT" status
+  [ "$status" -eq 0 ]
+  [ "$output" = "💤 Busy mode — currently inhibiting sleep." ]
+}
+
 @test "busy + start + stop: inhibitor torn down, mode stays busy" {
   "$SCRIPT" busy
   "$SCRIPT" --busy-event=start

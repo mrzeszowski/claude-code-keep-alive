@@ -11,9 +11,9 @@ mkdir -p "$STATE_DIR"
 read_state() {
   mode=off
   pid=
-  # shellcheck disable=SC2034
+  # shellcheck disable=SC2034  # populated by sourcing state file; persisted but not read in shell logic
   started_at=
-  # shellcheck disable=SC2034
+  # shellcheck disable=SC2034  # populated by sourcing state file; persisted but not read in shell logic
   expires_at=
   if [ -f "$STATE_FILE" ]; then
     # shellcheck disable=SC1090
