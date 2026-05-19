@@ -225,14 +225,54 @@ EOF
   echo "$output" | grep -qi "not found"
 }
 
-@test "unsupported platform (windows): exit 2 with hint" {
-  KEEP_ALIVE_PLATFORM=windows run "$SCRIPT" on
-  [ "$status" -eq 2 ]
-  echo "$output" | grep -qi "not yet supported"
-}
-
 @test "help: -h prints usage to stdout, exit 0" {
   run "$SCRIPT" -h
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "Usage:"
+}
+
+@test "windows: on starts inhibitor (mock pwsh)" {
+  KEEP_ALIVE_PLATFORM=windows run "$SCRIPT" on
+  [ "$status" -eq 0 ]
+  [ "$output" = "☕ Keep-alive on — machine won't sleep." ]
+  [ "$(state_get mode)" = "on" ]
+  pid=$(state_get pid)
+  [ -n "$pid" ]
+  kill -0 "$pid"
+}
+
+@test "windows: off kills inhibitor" {
+  KEEP_ALIVE_PLATFORM=windows "$SCRIPT" on
+  pid=$(state_get pid)
+  KEEP_ALIVE_PLATFORM=windows run "$SCRIPT" off
+  [ "$status" -eq 0 ]
+  [ "$output" = "✔  Keep-alive off — machine can sleep normally." ]
+  [ "$(state_get mode)" = "off" ]
+  ! kill -0 "$pid" 2>/dev/null
+}
+
+@test "windows: busy mode round-trip" {
+  KEEP_ALIVE_PLATFORM=windows run "$SCRIPT" busy
+  [ "$status" -eq 0 ]
+  [ "$output" = "💤 Busy mode — idle, waiting for next prompt." ]
+  [ "$(state_get mode)" = "busy" ]
+  KEEP_ALIVE_PLATFORM=windows "$SCRIPT" --busy-event=start
+  pid=$(state_get pid)
+  [ -n "$pid" ]
+  kill -0 "$pid"
+  KEEP_ALIVE_PLATFORM=windows "$SCRIPT" --busy-event=stop
+  [ "$(state_get mode)" = "busy" ]
+  [ -z "$(state_get pid)" ]
+  ! kill -0 "$pid" 2>/dev/null
+}
+
+@test "windows: missing pwsh exits 3" {
+  _tmpbin="$(mktemp -d -t keepalive-nobin-XXXXXX)"
+  for _t in mkdir date cat grep sed kill sleep sh; do
+    _tp="$(command -v "$_t" 2>/dev/null)" && ln -sf "$_tp" "$_tmpbin/$_t" || true
+  done
+  KEEP_ALIVE_PLATFORM=windows PATH="$_tmpbin" run "$SCRIPT" on
+  rm -rf "$_tmpbin"
+  [ "$status" -eq 3 ]
+  echo "$output" | grep -qi "pwsh"
 }
