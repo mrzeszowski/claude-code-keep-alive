@@ -13,7 +13,6 @@ read_state() {
   pid=
   # shellcheck disable=SC2034  # populated by sourcing state file; persisted but not read in shell logic
   started_at=
-  # shellcheck disable=SC2034  # populated by sourcing state file; persisted but not read in shell logic
   expires_at=
   if [ -f "$STATE_FILE" ]; then
     # shellcheck disable=SC1090
@@ -85,6 +84,38 @@ future_iso() {
   fi
 }
 
+iso_to_epoch() {
+  _iso="$1"
+  if date -u -r 0 +%s >/dev/null 2>&1; then
+    date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$_iso" +%s
+  else
+    date -u -d "$_iso" +%s
+  fi
+}
+
+format_remaining() {
+  _secs="$1"
+  if [ "$_secs" -le 59 ]; then
+    echo "less than a minute"
+  elif [ "$_secs" -lt 3600 ]; then
+    _mins=$(( (_secs + 59) / 60 ))
+    [ "$_mins" -eq 1 ] && echo "1 minute" || echo "$_mins minutes"
+  elif [ "$_secs" -lt 86400 ]; then
+    _hours=$(( (_secs + 3599) / 3600 ))
+    [ "$_hours" -eq 1 ] && echo "1 hour" || echo "$_hours hours"
+  else
+    _days=$(( (_secs + 86399) / 86400 ))
+    [ "$_days" -eq 1 ] && echo "1 day" || echo "$_days days"
+  fi
+}
+
+_locate_win_ps1() {
+  [ -n "${KEEP_ALIVE_WIN_PS1:-}" ] && { echo "$KEEP_ALIVE_WIN_PS1"; return; }
+  _cmd=$(command -v "$(basename "$0")" 2>/dev/null)
+  _dir=$(cd "$(dirname "${_cmd:-$0}")" 2>/dev/null && pwd 2>/dev/null)
+  echo "${_dir:-$(dirname "$0")}/keep-alive-win.ps1"
+}
+
 spawn_inhibitor() {
   # $1 = duration in seconds (0 or empty = forever). Echoes the PID.
   # fd 9 is the flock descriptor from with_lock; close it in the child so it
@@ -107,6 +138,13 @@ spawn_inhibitor() {
         --who=claude-code-keep-alive \
         --why="Active Claude Code session" \
         sleep "$sleep_arg" </dev/null >/dev/null 2>&1 9>&- & ;;
+    windows)
+      _ps1=$(_locate_win_ps1)
+      if [ "$duration_secs" -gt 0 ]; then
+        nohup pwsh -NonInteractive -File "$_ps1" -Seconds "$duration_secs" </dev/null >/dev/null 2>&1 9>&- &
+      else
+        nohup pwsh -NonInteractive -File "$_ps1" </dev/null >/dev/null 2>&1 9>&- &
+      fi ;;
   esac
   echo "$!"
 }
@@ -125,8 +163,10 @@ ensure_inhibitor_binary() {
         exit 3
       } ;;
     windows)
-      echo "keep-alive: Windows not yet supported in v0.1; contributions welcome at https://github.com/mrzeszowski/claude-code-keep-alive" >&2
-      exit 2 ;;
+      command -v pwsh >/dev/null 2>&1 || {
+        echo "keep-alive: 'pwsh' not found in PATH (install PowerShell 7+: https://aka.ms/powershell)" >&2
+        exit 3
+      } ;;
     *)
       echo "keep-alive: unsupported platform '$_platform'" >&2
       exit 2 ;;
@@ -171,7 +211,9 @@ _cmd_status() {
   refresh_state
   case "$mode" in
     on)       echo "☕ Keep-alive on — machine won't sleep." ;;
-    duration) echo "☕ Keep-alive on (timed) — machine won't sleep." ;;
+    duration)
+      _remaining=$(( $(iso_to_epoch "$expires_at") - $(date -u +%s) ))
+      echo "☕ Keep-alive on — machine won't sleep for $(format_remaining "$_remaining")." ;;
     busy)
       if [ -n "$pid" ]; then
         echo "💤 Busy mode — currently inhibiting sleep."

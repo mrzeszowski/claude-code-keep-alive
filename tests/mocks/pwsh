@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Mock for Windows `pwsh`. Ignores all arguments (-File, -Seconds, etc.) and just sleeps
+# so tests can capture the PID and verify it is killed correctly.
+exec sleep 9999

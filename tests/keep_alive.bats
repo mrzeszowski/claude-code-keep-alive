@@ -63,7 +63,7 @@ load test_helper
 @test "on 30m: mode=duration, expires_at set" {
   run "$SCRIPT" on 30m
   [ "$status" -eq 0 ]
-  [ "$output" = "☕ Keep-alive on (timed) — machine won't sleep." ]
+  echo "$output" | grep -q "^☕ Keep-alive on — machine won't sleep for 30 minutes\."
   [ "$(state_get mode)" = "duration" ]
   [ -n "$(state_get expires_at)" ]
 }
@@ -209,6 +209,11 @@ EOF
 }
 
 @test "missing inhibitor binary: exit 3 with install hint" {
+  # Symlink-based PATH isolation doesn't work on Windows (requires elevated
+  # privileges); the Linux path this test exercises is covered by ubuntu-latest CI.
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*)
+    skip "symlink-based PATH isolation unsupported on Windows; covered by ubuntu-latest CI"
+  ;; esac
   # Force platform=linux so the script looks for systemd-inhibit.
   # Build a minimal PATH that contains only the tools the script needs
   # (mkdir, date, cat, etc.) but deliberately omits systemd-inhibit.
@@ -225,14 +230,60 @@ EOF
   echo "$output" | grep -qi "not found"
 }
 
-@test "unsupported platform (windows): exit 2 with hint" {
-  KEEP_ALIVE_PLATFORM=windows run "$SCRIPT" on
-  [ "$status" -eq 2 ]
-  echo "$output" | grep -qi "not yet supported"
-}
-
 @test "help: -h prints usage to stdout, exit 0" {
   run "$SCRIPT" -h
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "Usage:"
+}
+
+@test "windows: on starts inhibitor (mock pwsh)" {
+  KEEP_ALIVE_PLATFORM=windows run "$SCRIPT" on
+  [ "$status" -eq 0 ]
+  [ "$output" = "☕ Keep-alive on — machine won't sleep." ]
+  [ "$(state_get mode)" = "on" ]
+  pid=$(state_get pid)
+  [ -n "$pid" ]
+  kill -0 "$pid"
+}
+
+@test "windows: off kills inhibitor" {
+  KEEP_ALIVE_PLATFORM=windows "$SCRIPT" on
+  pid=$(state_get pid)
+  KEEP_ALIVE_PLATFORM=windows run "$SCRIPT" off
+  [ "$status" -eq 0 ]
+  [ "$output" = "✔  Keep-alive off — machine can sleep normally." ]
+  [ "$(state_get mode)" = "off" ]
+  ! kill -0 "$pid" 2>/dev/null
+}
+
+@test "windows: busy mode round-trip" {
+  KEEP_ALIVE_PLATFORM=windows run "$SCRIPT" busy
+  [ "$status" -eq 0 ]
+  [ "$output" = "💤 Busy mode — idle, waiting for next prompt." ]
+  [ "$(state_get mode)" = "busy" ]
+  KEEP_ALIVE_PLATFORM=windows "$SCRIPT" --busy-event=start
+  pid=$(state_get pid)
+  [ -n "$pid" ]
+  kill -0 "$pid"
+  KEEP_ALIVE_PLATFORM=windows run "$SCRIPT" --busy-event=stop
+  [ "$status" -eq 0 ]
+  [ "$(state_get mode)" = "busy" ]
+  [ -z "$(state_get pid)" ]
+  ! kill -0 "$pid" 2>/dev/null
+}
+
+@test "windows: missing pwsh exits 3" {
+  # Use wrapper scripts instead of symlinks: symlinks require elevated privileges
+  # on Windows, but shell-script wrappers work everywhere.
+  _tmpbin="$(mktemp -d -t keepalive-nowin-XXXXXX)"
+  for _t in sh mkdir date cat grep sed sleep kill; do
+    _p="$(command -v "$_t" 2>/dev/null)" || continue
+    printf '#!/bin/sh\nexec "%s" "$@"\n' "$_p" > "$_tmpbin/$_t"
+    chmod +x "$_tmpbin/$_t"
+  done
+  # Deliberately no pwsh in _tmpbin
+  KEEP_ALIVE_PLATFORM=windows PATH="$_tmpbin" run "$SCRIPT" on
+  rm -rf "$_tmpbin"
+  [ "$status" -eq 3 ]
+  echo "$output" | grep -qi "pwsh"
 }
