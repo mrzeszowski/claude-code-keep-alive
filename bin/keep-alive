@@ -13,7 +13,6 @@ read_state() {
   pid=
   # shellcheck disable=SC2034  # populated by sourcing state file; persisted but not read in shell logic
   started_at=
-  # shellcheck disable=SC2034  # populated by sourcing state file; persisted but not read in shell logic
   expires_at=
   if [ -f "$STATE_FILE" ]; then
     # shellcheck disable=SC1090
@@ -82,6 +81,31 @@ future_iso() {
   else
     # GNU date (Linux)
     date -u -d "@$(( $(date -u +%s) + secs ))" +%Y-%m-%dT%H:%M:%SZ
+  fi
+}
+
+iso_to_epoch() {
+  _iso="$1"
+  if date -u -r 0 +%s >/dev/null 2>&1; then
+    date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$_iso" +%s
+  else
+    date -u -d "$_iso" +%s
+  fi
+}
+
+format_remaining() {
+  _secs="$1"
+  if [ "$_secs" -le 59 ]; then
+    echo "less than a minute"
+  elif [ "$_secs" -lt 3600 ]; then
+    _mins=$(( (_secs + 59) / 60 ))
+    [ "$_mins" -eq 1 ] && echo "1 minute" || echo "$_mins minutes"
+  elif [ "$_secs" -lt 86400 ]; then
+    _hours=$(( (_secs + 3599) / 3600 ))
+    [ "$_hours" -eq 1 ] && echo "1 hour" || echo "$_hours hours"
+  else
+    _days=$(( (_secs + 86399) / 86400 ))
+    [ "$_days" -eq 1 ] && echo "1 day" || echo "$_days days"
   fi
 }
 
@@ -187,7 +211,9 @@ _cmd_status() {
   refresh_state
   case "$mode" in
     on)       echo "☕ Keep-alive on — machine won't sleep." ;;
-    duration) echo "☕ Keep-alive on (timed) — machine won't sleep." ;;
+    duration)
+      _remaining=$(( $(iso_to_epoch "$expires_at") - $(date -u +%s) ))
+      echo "☕ Keep-alive on — machine won't sleep for $(format_remaining "$_remaining")." ;;
     busy)
       if [ -n "$pid" ]; then
         echo "💤 Busy mode — currently inhibiting sleep."

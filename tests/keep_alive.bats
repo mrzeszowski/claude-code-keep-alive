@@ -63,7 +63,7 @@ load test_helper
 @test "on 30m: mode=duration, expires_at set" {
   run "$SCRIPT" on 30m
   [ "$status" -eq 0 ]
-  [ "$output" = "☕ Keep-alive on (timed) — machine won't sleep." ]
+  echo "$output" | grep -q "^☕ Keep-alive on — machine won't sleep for 30 minutes\."
   [ "$(state_get mode)" = "duration" ]
   [ -n "$(state_get expires_at)" ]
 }
