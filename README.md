@@ -42,7 +42,7 @@ The `keep-alive:` prefix is the plugin namespace — every Claude Code plugin's 
 
 - **macOS:** spawns a detached `caffeinate -dis` process.
 - **Linux (systemd):** spawns a detached `systemd-inhibit --what=idle:sleep ... sleep` process.
-- **Windows:** not yet supported in v0.1; contributions welcome.
+- **Windows:** spawns a detached PowerShell (`pwsh`) script using `SetThreadExecutionState`. Requires PowerShell 7+.
 
 State lives in `${XDG_CACHE_HOME:-$HOME/.cache}/claude-code-keep-alive/state` — a single global file shared across all your Claude Code sessions on this machine. `flock` (or a `mkdir`-based fallback on macOS) serializes concurrent invocations.
 
