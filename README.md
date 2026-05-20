@@ -50,11 +50,14 @@ State lives in `${XDG_CACHE_HOME:-$HOME/.cache}/claude-code-keep-alive/state` â€
 
 ## Updating
 
+Inside a Claude Code session:
+
 ```text
 /plugin update keep-alive@claude-code-keep-alive
+/reload-plugins
 ```
 
-You only receive updates when the plugin's `version` field is bumped (not on every commit).
+You only receive updates when the plugin's `version` field is bumped (not on every commit). If the command reports the plugin is already up to date, you have the latest release.
 
 ## Uninstall
 
