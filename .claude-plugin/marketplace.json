@@ -11,7 +11,7 @@
       "name": "keep-alive",
       "description": "Prevents your machine from sleeping during Claude Code sessions",
       "category": "productivity",
-      "version": "0.1.0",
+      "version": "0.1.100",
       "source": "./",
       "author": { "name": "Marcin Rzeszowski" },
       "homepage": "https://github.com/mrzeszowski/claude-code-keep-alive",

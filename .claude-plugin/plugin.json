@@ -1,7 +1,7 @@
 {
   "name": "keep-alive",
   "description": "Prevents your machine from sleeping during Claude Code sessions (mirrors GitHub Copilot CLI /keep-alive)",
-  "version": "0.1.0",
+  "version": "0.1.100",
   "author": {
     "name": "Marcin Rzeszowski",
     "email": "mrzeszowski@outlook.com"
