@@ -209,6 +209,11 @@ EOF
 }
 
 @test "missing inhibitor binary: exit 3 with install hint" {
+  # Symlink-based PATH isolation doesn't work on Windows (requires elevated
+  # privileges); the Linux path this test exercises is covered by ubuntu-latest CI.
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*)
+    skip "symlink-based PATH isolation unsupported on Windows; covered by ubuntu-latest CI"
+  ;; esac
   # Force platform=linux so the script looks for systemd-inhibit.
   # Build a minimal PATH that contains only the tools the script needs
   # (mkdir, date, cat, etc.) but deliberately omits systemd-inhibit.
@@ -268,10 +273,15 @@ EOF
 }
 
 @test "windows: missing pwsh exits 3" {
-  _tmpbin="$(mktemp -d -t keepalive-nobin-XXXXXX)"
-  for _t in mkdir date cat grep sed kill sleep sh; do
-    _tp="$(command -v "$_t" 2>/dev/null)" && ln -sf "$_tp" "$_tmpbin/$_t" || true
+  # Use wrapper scripts instead of symlinks: symlinks require elevated privileges
+  # on Windows, but shell-script wrappers work everywhere.
+  _tmpbin="$(mktemp -d -t keepalive-nowin-XXXXXX)"
+  for _t in sh mkdir date cat grep sed sleep kill; do
+    _p="$(command -v "$_t" 2>/dev/null)" || continue
+    printf '#!/bin/sh\nexec "%s" "$@"\n' "$_p" > "$_tmpbin/$_t"
+    chmod +x "$_tmpbin/$_t"
   done
+  # Deliberately no pwsh in _tmpbin
   KEEP_ALIVE_PLATFORM=windows PATH="$_tmpbin" run "$SCRIPT" on
   rm -rf "$_tmpbin"
   [ "$status" -eq 3 ]
